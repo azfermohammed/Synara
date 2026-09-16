@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Synara — epilepsy care for students</title>
+<meta name="description" content="Synara combines medication reminders, seizure tracking, and an emergency seizure card into one app built for students with epilepsy." />
+<meta name="theme-color" content="#7c4dff" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+<div class="page">
+
+  <!-- ============ PITCH PANEL (desktop) ============ -->
+  <aside class="pitch">
+    <div class="brand">
+      <div class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 32 32" fill="none"><path d="M4 18h5l3-8 5 14 3.5-9H28" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+      <div>
+        <div class="brand-name">Synara</div>
+        <div class="brand-tag">Epilepsy care, built for school life</div>
+      </div>
+    </div>
+
+    <h1 class="pitch-h1">Meds, seizures, and safety in one place.</h1>
+    <p class="pitch-sub">
+      A working prototype — not a mockup. Click through it on the right.
+      Everything you log is saved on-device, so you can close the tab and come back to it.
+    </p>
+
+    <div class="pillars">
+      <div class="pillar">
+        <span class="pillar-ico" data-tone="violet">💊</span>
+        <div>
+          <h3>MedMinder</h3>
+          <p>Doses, schedules, reminders. Mark each one taken, late, or missed — with a history you can actually read.</p>
+        </div>
+      </div>
+      <div class="pillar">
+        <span class="pillar-ico" data-tone="mint">📈</span>
+        <div>
+          <h3>Seizure tracker</h3>
+          <p>Log in under ten seconds. The app looks for patterns between seizures, missed doses, sleep, and triggers.</p>
+        </div>
+      </div>
+      <div class="pillar">
+        <span class="pillar-ico" data-tone="rose">🆘</span>
+        <div>
+          <h3>Safety card</h3>
+          <p>Emergency contacts and first aid, one tap from anywhere. Built so a teacher can use it, not just the student.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="answer-card">
+      <div class="answer-label">The build question, answered</div>
+      <p><strong>Yes — this is very buildable.</strong> This prototype is plain HTML, CSS, and JavaScript: no frameworks, no build step, no server. It runs on any phone or laptop browser today.</p>
+      <p>For the real app, the shortest path is <strong>React&nbsp;Native&nbsp;+&nbsp;Expo</strong> — one JavaScript codebase that ships to both iOS and Android, and gives you the two things a browser can't: true push notifications for dose reminders, and a lock-screen shortcut to the safety card.</p>
+    </div>
+
+    <div class="pitch-actions">
+      <button class="btn-ghost" data-action="reset-demo">Reset demo data</button>
+      <span class="disclaimer">Prototype for design review. Not a medical device.</span>
+    </div>
+  </aside>
+
+  <!-- ============ DEVICE ============ -->
+  <div class="stage">
+    <div class="device">
+      <div class="device-notch" aria-hidden="true"></div>
+      <div class="app">
+        <div class="statusbar" aria-hidden="true">
+          <span id="sb-time">8:04</span>
+          <span class="sb-right"><span class="sb-sig"></span><span class="sb-wifi"></span><span class="sb-bat"></span></span>
+        </div>
+        <header class="appbar" id="appbar"></header>
+        <main class="screen" id="screen" tabindex="-1"></main>
+        <nav class="tabbar" id="tabbar" aria-label="Main"></nav>
+
+        <!-- Overlays live inside .app so they stay clipped to the phone
+             on desktop and go full-bleed on mobile, with no extra CSS. -->
+        <div class="sheet-backdrop" id="backdrop" hidden></div>
+        <section class="sheet" id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-title" hidden></section>
+        <div class="emergency" id="emergency" role="dialog" aria-modal="true" aria-label="Emergency seizure card" hidden></div>
+        <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+      </div>
+    </div>
+    <p class="stage-note">Live prototype · your data stays in this browser</p>
+  </div>
+
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
