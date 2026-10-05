@@ -1,0 +1,14 @@
+{
+  "name": "synara",
+  "version": "2.1.0",
+  "private": true,
+  "description": "Medication reminders, seizure tracking, and an emergency safety card for students with epilepsy.",
+  "type": "module",
+  "scripts": {
+    "dev": "python3 dev.py 4173",
+    "test": "node --test \"test/*.test.js\""
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
