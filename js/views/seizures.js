@@ -1,22 +1,23 @@
 /* ============================================================
    views/seizures.js — seizure log, daily check-in, and patterns
    ------------------------------------------------------------
-   Imported by main.js.
+   Imported by main.js, and by views/safety.js (the emergency timer
+   hands its measured duration to logSeizure()).
 
-   The logging form is optimised for being filled in badly. Somebody
-   writing this up ten minutes after a seizure is shaken, tired, and
-   half-remembering — so every field except the time is optional, the
-   common answers are one tap, and a half-filled entry saves without
+   The logging form is built to be filled in badly. Somebody writing
+   this up ten minutes after a seizure is shaken, tired, and half-
+   remembering — so everything except the time is optional, common
+   answers are one tap, and a half-filled entry saves without
    complaint. A partial record is worth far more than an abandoned one.
    ============================================================ */
 
 import {
-  html, raw, map, esc, dayKey, timeOf, parseStamp,
-  prettyDate, prettySeconds, prettyStamp, timeAgo, plural, monthName, clamp,
+  html, raw, esc, dayKey, timeOf, parseStamp, prettyDate, prettySeconds,
+  prettyStamp, timeAgo, plural, monthName, clamp,
 } from '../util.js';
 import * as store from '../store.js';
 import { insights, summary, DISCLAIMER } from '../insights.js';
-import { icon, toast, openSheet, closeSheet, confirmSheet, sheetValues } from '../ui.js';
+import { icon, toast, openSheet, closeSheet, confirmSheet, sheetValues, sheetEl } from '../ui.js';
 
 const TYPES = [
   'Focal aware', 'Focal impaired awareness', 'Tonic-clonic',
@@ -33,8 +34,9 @@ const PLACES = [
   'School — cafeteria', 'Outside', 'In a car', 'Other',
 ];
 
-/* Sub-tab and drafts live at module scope: they are view state, not
-   app state, and should not be persisted. */
+const STRESS_LABELS = ['', 'Calm', 'Fine', 'Busy', 'Stressed', 'Overwhelmed'];
+
+/* Sub-tab and drafts are view state, not app state — never persisted. */
 let tab = 'log';
 let draft = null;
 let checkinDraft = null;
@@ -52,10 +54,9 @@ export function title() {
 export function subtitle(state) {
   const n = (state.seizures || []).length;
   if (!n) return 'Nothing logged yet';
-  const stats = summary(state);
-  return stats.daysSince === 0
-    ? `${entries(n)} · one today`
-    : `${entries(n)} · ${plural(stats.daysSince, 'day')} since the last`;
+  const { daysSince } = summary(state);
+  if (daysSince === 0) return `${entries(n)} · one today`;
+  return `${entries(n)} · ${plural(daysSince, 'day')} since the last`;
 }
 
 /* ============================================================
@@ -64,13 +65,19 @@ export function subtitle(state) {
 
 export function render(state) {
   return html`
-    <div class="subtabs" role="tablist">
-      <button class="subtab" role="tab" data-action="sz-tab" data-tab="log"
-              aria-selected="${tab === 'log'}">Log</button>
-      <button class="subtab" role="tab" data-action="sz-tab" data-tab="patterns"
-              aria-selected="${tab === 'patterns'}">Patterns</button>
+    <div class="subtabs" role="tablist" aria-label="Seizure views">
+      <button class="subtab" role="tab" id="tab-log" aria-controls="panel-sz"
+              data-action="sz-tab" data-tab="log" aria-selected="${tab === 'log'}">
+        ${raw(icon('note', 18))} Log
+      </button>
+      <button class="subtab" role="tab" id="tab-patterns" aria-controls="panel-sz"
+              data-action="sz-tab" data-tab="patterns" aria-selected="${tab === 'patterns'}">
+        ${raw(icon('sparkle', 18))} Patterns
+      </button>
     </div>
-    ${raw(tab === 'log' ? logTab(state) : patternsTab(state))}
+    <div id="panel-sz" role="tabpanel" aria-labelledby="tab-${tab}" class="stack stack-5">
+      ${raw(tab === 'log' ? logTab(state) : patternsTab(state))}
+    </div>
   `;
 }
 
@@ -79,25 +86,47 @@ export function render(state) {
 function logRow(s) {
   const d = parseStamp(s.at);
   const meta = [];
-  if (s.duration) meta.push(`<span class="pill">${prettySeconds(s.duration)}</span>`);
+  if (s.duration) meta.push(`<span class="pill">${icon('timer', 13)} ${prettySeconds(s.duration)}</span>`);
   if (s.trigger) meta.push(`<span class="pill pill-warn">${esc(s.trigger)}</span>`);
   if (s.place) meta.push(`<span class="pill">${esc(s.place)}</span>`);
   if (s.injury) meta.push('<span class="pill pill-bad">Injury</span>');
   if (s.emsCalled) meta.push('<span class="pill pill-bad">911 called</span>');
 
   return `
-    <button class="log-entry" data-action="seizure-open" data-id="${s.id}">
-      <span class="log-date">
-        <span class="log-mon">${monthName(d.getMonth())}</span>
-        <span class="log-day">${d.getDate()}</span>
-      </span>
-      <span class="log-body">
-        <span class="log-t">${esc(s.type || 'Seizure')}</span>
-        <span class="row-s">${prettyStamp(s.at)} · ${timeAgo(s.at)}</span>
-        ${meta.length ? `<span class="log-meta">${meta.join('')}</span>` : ''}
-        ${s.notes ? `<span class="log-note">${esc(s.notes)}</span>` : ''}
-      </span>
-    </button>`;
+    <li>
+      <button class="log-entry" data-action="seizure-open" data-id="${s.id}">
+        <span class="log-date" aria-hidden="true">
+          <span class="log-mon">${monthName(d.getMonth())}</span>
+          <span class="log-day">${d.getDate()}</span>
+        </span>
+        <span class="log-body">
+          <span class="log-t">${esc(s.type || 'Seizure')}</span>
+          <span class="row-s">${prettyStamp(s.at)} · ${timeAgo(s.at)}</span>
+          ${meta.length ? `<span class="log-meta">${meta.join('')}</span>` : ''}
+          ${s.notes ? `<span class="log-note">${esc(s.notes)}</span>` : ''}
+        </span>
+        <span class="chev">${icon('chevron')}</span>
+      </button>
+    </li>`;
+}
+
+function historyByMonth(list) {
+  const groups = [];
+  for (const s of list) {
+    const d = parseStamp(s.at);
+    const key = `${d.getFullYear()}-${d.getMonth()}`;
+    let g = groups[groups.length - 1];
+    if (!g || g.key !== key) {
+      g = { key, label: `${monthName(d.getMonth())} ${d.getFullYear()}`, items: [] };
+      groups.push(g);
+    }
+    g.items.push(s);
+  }
+  return groups.map((g) => `
+    <div class="month-group">
+      <h3 class="eyebrow month-label">${g.label} · ${g.items.length}</h3>
+      <div class="card card-flush"><ul class="rows">${g.items.map(logRow).join('')}</ul></div>
+    </div>`).join('');
 }
 
 function checkinCard(checkin) {
@@ -105,29 +134,25 @@ function checkinCard(checkin) {
     return html`
       <button class="card card-tap" data-action="checkin-open">
         <span class="row">
-          <span class="med-dot" data-color="blue" aria-hidden="true">🌙</span>
+          <span class="med-dot" data-color="blue" aria-hidden="true">${raw(icon('moon', 20))}</span>
           <span class="row-body">
             <span class="row-t">Today's check-in</span>
-            <span class="row-s">
-              Sleep and stress, ten seconds. This is what the pattern finder
-              compares seizures against.
-            </span>
+            <span class="row-s">Sleep and stress, ten seconds. This is what the pattern finder compares seizures against.</span>
           </span>
           <span class="chev">${raw(icon('chevron'))}</span>
         </span>
       </button>
     `;
   }
-
+  const sleep = checkin.sleepHours == null ? '—' : checkin.sleepHours;
+  const stress = checkin.stress == null ? '—' : checkin.stress;
   return html`
     <button class="card card-tap" data-action="checkin-open">
       <span class="row">
-        <span class="med-dot" data-color="mint" aria-hidden="true">✓</span>
+        <span class="med-dot" data-color="mint" aria-hidden="true">${raw(icon('check', 20))}</span>
         <span class="row-body">
           <span class="row-t">Checked in today</span>
-          <span class="row-s">
-            ${checkin.sleepHours} hours of sleep · stress ${checkin.stress} of 5
-          </span>
+          <span class="row-s">${sleep} hours of sleep · stress ${stress} of 5 · tap to change</span>
         </span>
         <span class="chev">${raw(icon('chevron'))}</span>
       </span>
@@ -140,26 +165,24 @@ function logTab(state) {
   const checkin = store.getCheckin(dayKey(), state);
 
   return html`
-    <button class="btn btn-primary btn-block" data-action="seizure-open">
-      ${raw(icon('plus', 18))} Log a seizure
+    <button class="btn btn-primary btn-lg btn-block" data-action="seizure-open">
+      ${raw(icon('plus', 20))} Log a seizure
     </button>
 
     ${raw(checkinCard(checkin))}
 
     ${raw(list.length ? `
-      <div class="section">
-        <h2>History</h2>
-        <div class="card card-flush">
-          <div class="rows">${list.map(logRow).join('')}</div>
-        </div>
-      </div>` : `
+      <section class="section" aria-labelledby="hist-h">
+        <h2 id="hist-h">History</h2>
+        ${historyByMonth(list)}
+      </section>` : `
       <div class="card">
         <div class="empty">
-          <span class="empty-ico" aria-hidden="true">📋</span>
+          <span class="empty-ico" aria-hidden="true">${icon('note', 32)}</span>
           <span class="empty-t">No seizures logged</span>
           <span class="empty-s">
-            That is a good thing. When one happens, logging it here is what
-            lets Synara find patterns later.
+            That's a good thing. When one happens, logging it here — even
+            roughly — is what lets Synara spot patterns later.
           </span>
         </div>
       </div>`)}
@@ -171,7 +194,8 @@ function logTab(state) {
 function disclaimerBlock() {
   return html`
     <div class="disclaimer">
-      <strong>About these patterns.</strong> ${DISCLAIMER}
+      ${raw(icon('info', 16))}
+      <span><strong>About these patterns.</strong> ${DISCLAIMER}</span>
     </div>
   `;
 }
@@ -180,17 +204,22 @@ function patternsTab(state) {
   const found = insights(state);
   const stats = summary(state);
   const n = (state.seizures || []).length;
+  const checkins = Object.keys(state.checkins || {}).length;
 
   if (!found.length) {
+    const needs = [];
+    if (n < 3) needs.push(`at least 3 seizures logged (you have ${n})`);
+    if (checkins < 13) needs.push(`about two weeks of daily check-ins (you have ${checkins})`);
     return html`
       <div class="card">
         <div class="empty">
-          <span class="empty-ico" aria-hidden="true">🔍</span>
-          <span class="empty-t">Not enough logged yet</span>
+          <span class="empty-ico" aria-hidden="true">${raw(icon('sparkle', 32))}</span>
+          <span class="empty-t">Nothing to report yet</span>
           <span class="empty-s">
-            ${n < 2
-              ? 'Synara needs at least a couple of seizures logged before it will say anything about patterns.'
-              : 'Nothing here clears the bar yet. Synara would rather show you nothing than a coincidence dressed up as a finding.'}
+            Synara would rather show you nothing than a coincidence dressed up
+            as a finding.${needs.length
+              ? ` Most patterns need ${needs.join(' and ')}.`
+              : ' Nothing in your log clears the bar right now — which can be good news.'}
           </span>
         </div>
       </div>
@@ -198,36 +227,36 @@ function patternsTab(state) {
     `;
   }
 
+  const cards = found.map((i) => `
+    <li class="insight" data-tone="${i.tone}">
+      <span class="insight-ico" aria-hidden="true">${icon(i.icon, 20)}</span>
+      <span class="insight-body">
+        <span class="insight-t">${esc(i.title)}</span>
+        <span class="insight-d">${esc(i.detail)}</span>
+        <span class="insight-e">${esc(i.evidence)}</span>
+      </span>
+    </li>`).join('');
+
   return html`
     <div class="stats">
       <div class="stat">
         <span class="stat-n">${stats.totalSeizures}</span>
-        <span class="stat-l">Logged<br/>in total</span>
+        <span class="stat-l">Logged in total</span>
       </div>
       <div class="stat">
         <span class="stat-n">${stats.seizuresLast30}</span>
-        <span class="stat-l">In the<br/>last 30 days</span>
+        <span class="stat-l">In the last 30 days</span>
       </div>
       <div class="stat">
-        <span class="stat-n">${stats.avgDuration ?? '—'}</span>
-        <span class="stat-l">Average<br/>length (sec)</span>
+        <span class="stat-n stat-n-sm">${stats.avgDurationLabel || '—'}</span>
+        <span class="stat-l">Average length</span>
       </div>
     </div>
 
-    <div class="section">
-      <h2>What your log shows</h2>
-      <div class="stack stack-3">
-        ${map(found, (i) => `
-          <div class="insight" data-tone="${i.tone}">
-            <span class="insight-ico" aria-hidden="true">${i.icon}</span>
-            <span class="insight-body">
-              <span class="insight-t">${esc(i.title)}</span>
-              <span class="insight-d">${esc(i.detail)}</span>
-              <span class="insight-e">${esc(i.evidence)}</span>
-            </span>
-          </div>`)}
-      </div>
-    </div>
+    <section class="section" aria-labelledby="patterns-h">
+      <h2 id="patterns-h">What your log shows</h2>
+      <ul class="stack stack-3">${raw(cards)}</ul>
+    </section>
 
     ${raw(disclaimerBlock())}
   `;
@@ -237,130 +266,132 @@ function patternsTab(state) {
    Seizure form
    ============================================================ */
 
+function chipGroup(field, options, label) {
+  const chips = options.map((o) => `
+    <button type="button" class="chip" data-action="sz-chip" data-field="${field}"
+            data-value="${esc(o)}" aria-pressed="${o === draft[field]}">${esc(o)}</button>`).join('');
+  return `
+    <div class="field">
+      <span class="label" id="lbl-${field}">${label}</span>
+      <div class="chips" role="group" aria-labelledby="lbl-${field}">${chips}</div>
+    </div>`;
+}
+
 function seizureForm() {
   const mins = Math.floor(draft.duration / 60);
   const secs = draft.duration % 60;
+  const today = dayKey();
 
   return html`
-    <div class="stack stack-5">
+    <form class="stack stack-5" data-action="seizure-save" novalidate>
+      ${raw(draft.fromTimer ? `
+        <div class="insight" data-tone="good">
+          <span class="insight-ico" aria-hidden="true">${icon('timer', 20)}</span>
+          <span class="insight-body">
+            <span class="insight-t">Timed at ${prettySeconds(draft.duration)}</span>
+            <span class="insight-d">Start time and length came from the emergency timer. Everything else is optional.</span>
+          </span>
+        </div>` : '')}
+
       <div class="input-row">
         <div class="field grow">
           <label class="label" for="sz-date">Date</label>
-          <input class="input" type="date" id="sz-date" name="date" value="${draft.date}" />
+          <input class="input" type="date" id="sz-date" name="date" value="${draft.date}" max="${today}" required />
         </div>
         <div class="field grow">
-          <label class="label" for="sz-time">Time</label>
-          <input class="input" type="time" id="sz-time" name="time" value="${draft.time}" />
+          <label class="label" for="sz-time">Started at</label>
+          <input class="input" type="time" id="sz-time" name="time" value="${draft.time}" required />
         </div>
       </div>
 
       <div class="field">
-        <span class="label">How long did it last?</span>
-        <div class="input-row">
-          <input class="input" type="number" name="mins" min="0" max="120"
+        <span class="label" id="dur-label">How long did it last?</span>
+        <div class="input-row duration-row" role="group" aria-labelledby="dur-label">
+          <input class="input" type="number" inputmode="numeric" name="mins" min="0" max="120"
                  value="${mins}" aria-label="Minutes" />
-          <span class="row shrink-0 ink-3 t-sm">min</span>
-          <input class="input" type="number" name="secs" min="0" max="59"
+          <span class="unit">min</span>
+          <input class="input" type="number" inputmode="numeric" name="secs" min="0" max="59"
                  value="${secs}" aria-label="Seconds" />
-          <span class="row shrink-0 ink-3 t-sm">sec</span>
+          <span class="unit">sec</span>
         </div>
-        <span class="hint">An estimate is fine. Leave it at zero if you don't know.</span>
+        <span class="hint">A guess is fine. Leave it at zero if nobody knows.</span>
       </div>
 
-      <div class="field">
-        <span class="label">Type</span>
-        <div class="chips">
-          ${map(TYPES, (t) => `
-            <button class="chip" data-action="sz-chip" data-field="type" data-value="${esc(t)}"
-                    aria-pressed="${t === draft.type}">${esc(t)}</button>`)}
-        </div>
-      </div>
-
-      <div class="field">
-        <span class="label">Possible trigger</span>
-        <div class="chips">
-          ${map(TRIGGERS, (t) => `
-            <button class="chip" data-action="sz-chip" data-field="trigger" data-value="${esc(t)}"
-                    aria-pressed="${t === draft.trigger}">${esc(t)}</button>`)}
-        </div>
-      </div>
-
-      <div class="field">
-        <span class="label">Where were you?</span>
-        <div class="chips">
-          ${map(PLACES, (p) => `
-            <button class="chip" data-action="sz-chip" data-field="place" data-value="${esc(p)}"
-                    aria-pressed="${p === draft.place}">${esc(p)}</button>`)}
-        </div>
-      </div>
+      ${raw(chipGroup('type', TYPES, 'Type'))}
+      ${raw(chipGroup('trigger', TRIGGERS, 'Possible trigger'))}
+      ${raw(chipGroup('place', PLACES, 'Where were you?'))}
 
       <div class="field">
         <label class="label" for="sz-aura">Warning signs beforehand</label>
         <input class="input" id="sz-aura" name="aura" value="${draft.aura}"
-               placeholder="Metallic taste, dizziness…" autocomplete="off" />
+               placeholder="Metallic taste, dizziness, déjà vu…" autocomplete="off" maxlength="300" />
       </div>
 
-      <div class="card card-tight">
-        <label class="row-between" style="cursor:pointer">
+      <div class="card card-flush">
+        <label class="toggle-row">
           <span class="row-body">
             <span class="row-t">Were you injured?</span>
             <span class="row-s">Even a bitten cheek counts</span>
           </span>
-          <input type="checkbox" name="injury" ${draft.injury ? 'checked' : ''}
-                 style="width:22px;height:22px;accent-color:var(--brand)" />
+          <input type="checkbox" class="check" name="injury" ${raw(draft.injury ? 'checked' : '')} />
         </label>
-      </div>
-
-      <div class="card card-tight">
-        <label class="row-between" style="cursor:pointer">
+        <label class="toggle-row">
           <span class="row-body">
             <span class="row-t">Was 911 called?</span>
             <span class="row-s">Worth recording either way</span>
           </span>
-          <input type="checkbox" name="emsCalled" ${draft.emsCalled ? 'checked' : ''}
-                 style="width:22px;height:22px;accent-color:var(--brand)" />
+          <input type="checkbox" class="check" name="emsCalled" ${raw(draft.emsCalled ? 'checked' : '')} />
         </label>
       </div>
 
       <div class="field">
         <label class="label" for="sz-notes">Anything else</label>
-        <textarea class="textarea" id="sz-notes" name="notes"
+        <textarea class="textarea" id="sz-notes" name="notes" maxlength="4000"
                   placeholder="What happened, who was there, how you felt afterwards…">${draft.notes}</textarea>
       </div>
-    </div>
+    </form>
   `;
 }
 
 function readSeizureDraft() {
   if (!draft) return;
   const v = sheetValues();
-  if (v.date !== undefined) draft.date = v.date;
-  if (v.time !== undefined) draft.time = v.time;
-  if (v.aura !== undefined) draft.aura = v.aura;
-  if (v.notes !== undefined) draft.notes = v.notes;
-  if (v.injury !== undefined) draft.injury = v.injury;
-  if (v.emsCalled !== undefined) draft.emsCalled = v.emsCalled;
-
-  const mins = Number(v.mins) || 0;
-  const secs = Number(v.secs) || 0;
-  draft.duration = clamp(mins * 60 + secs, 0, 7200);
+  for (const k of ['date', 'time', 'aura', 'notes', 'injury', 'emsCalled']) {
+    if (v[k] !== undefined) draft[k] = v[k];
+  }
+  if (v.mins !== undefined || v.secs !== undefined) {
+    const mins = clamp(Number(v.mins) || 0, 0, 120);
+    const secs = clamp(Number(v.secs) || 0, 0, 59);
+    draft.duration = mins * 60 + secs;
+  }
 }
 
-function refreshSeizureSheet() {
+function refreshSeizureSheet(focusSelector) {
   readSeizureDraft();
-  const body = document.querySelector('.sheet-body');
-  if (body) body.innerHTML = seizureForm();
+  const body = sheetEl().querySelector('.sheet-body');
+  if (!body) return;
+  const top = body.scrollTop;
+  body.innerHTML = seizureForm();
+  body.scrollTop = top;
+  if (focusSelector) sheetEl().querySelector(focusSelector)?.focus({ preventScroll: true });
 }
 
-function openSeizureSheet(existing) {
+/**
+ * Open the log form. `existing` edits an entry; `prefill` seeds a new
+ * one — the emergency timer passes {at, duration}.
+ */
+function openSeizureSheet(existing, prefill = {}) {
   if (existing) {
     const [date, time] = existing.at.split('T');
-    draft = { ...existing, date, time };
+    draft = { ...existing, date, time, fromTimer: false };
   } else {
+    const at = prefill.at || `${dayKey()}T${timeOf()}`;
+    const [date, time] = at.split('T');
     draft = {
-      id: null, date: dayKey(), time: timeOf(), duration: 0,
+      id: null, date, time, duration: prefill.duration || 0,
       type: '', trigger: '', place: '', aura: '',
       injury: false, emsCalled: false, notes: '',
+      fromTimer: !!prefill.duration,
     };
   }
 
@@ -377,52 +408,58 @@ function openSeizureSheet(existing) {
   });
 }
 
+/** Entry point for the emergency timer. */
+export function logSeizure(prefill) {
+  openSeizureSheet(null, prefill);
+}
+
 /* ============================================================
    Check-in form
    ============================================================ */
 
-const STRESS_LABELS = ['', 'Calm', 'Fine', 'Busy', 'Stressed', 'Overwhelmed'];
-
 function checkinForm() {
+  const segments = [1, 2, 3, 4, 5].map((n) => `
+    <button type="button" class="segment" data-action="checkin-stress" data-value="${n}"
+            aria-pressed="${checkinDraft.stress === n}" aria-label="${n}, ${STRESS_LABELS[n]}">${n}</button>`).join('');
+
   return html`
     <div class="stack stack-6">
       <div class="field">
-        <span class="label">How many hours did you sleep?</span>
-        <div class="stepper">
-          <button class="stepper-btn" data-action="checkin-sleep" data-delta="-0.5"
-                  aria-label="Less sleep">−</button>
-          <span class="sleep-n">${checkinDraft.sleepHours}</span>
-          <button class="stepper-btn" data-action="checkin-sleep" data-delta="0.5"
-                  aria-label="More sleep">+</button>
+        <span class="label" id="sleep-label">How many hours did you sleep last night?</span>
+        <div class="stepper" role="group" aria-labelledby="sleep-label">
+          <button type="button" class="stepper-btn" data-action="checkin-sleep" data-value="-0.5"
+                  aria-label="Half an hour less">−</button>
+          <span class="sleep-n" aria-live="polite">${checkinDraft.sleepHours}<small>h</small></span>
+          <button type="button" class="stepper-btn" data-action="checkin-sleep" data-value="0.5"
+                  aria-label="Half an hour more">+</button>
         </div>
         <span class="hint text-center">
-          Rough is fine. Short sleep is one of the most common seizure triggers,
-          which is why it is the first thing asked.
+          Rough is fine. Short sleep is one of the most commonly reported
+          seizure triggers, which is why it's asked first.
         </span>
       </div>
 
       <div class="field">
-        <span class="label">How stressed do you feel?</span>
-        <div class="segments">
-          ${map([1, 2, 3, 4, 5], (n) => `
-            <button class="segment" data-action="checkin-stress" data-value="${n}"
-                    aria-pressed="${checkinDraft.stress === n}">${n}</button>`)}
-        </div>
+        <span class="label" id="stress-label">How stressed do you feel today?</span>
+        <div class="segments" role="group" aria-labelledby="stress-label">${raw(segments)}</div>
         <span class="hint text-center">${STRESS_LABELS[checkinDraft.stress] || ''}</span>
       </div>
 
       <div class="field">
         <label class="label" for="ci-notes">Anything worth noting</label>
-        <textarea class="textarea" id="ci-notes" name="notes"
+        <textarea class="textarea" id="ci-notes" name="notes" maxlength="600"
                   placeholder="Sick, travelling, exams…">${checkinDraft.notes}</textarea>
       </div>
     </div>
   `;
 }
 
-function refreshCheckinSheet() {
-  const body = document.querySelector('.sheet-body');
+function refreshCheckinSheet(focusSelector) {
+  const v = sheetValues();
+  if (v.notes !== undefined) checkinDraft.notes = v.notes;
+  const body = sheetEl().querySelector('.sheet-body');
   if (body) body.innerHTML = checkinForm();
+  if (focusSelector) sheetEl().querySelector(focusSelector)?.focus({ preventScroll: true });
 }
 
 /* ============================================================
@@ -432,9 +469,14 @@ function refreshCheckinSheet() {
 export const actions = {
   'sz-tab'(node) {
     tab = node.dataset.tab;
-    // Nothing in the store changed, so commit a no-op to drive the
-    // subscriber re-render. Cheaper than exporting a render hook.
-    store.update(() => {});
+    store.refresh();
+  },
+
+  /** From the home screen's insight card: straight to Patterns. */
+  'open-patterns'() {
+    tab = 'patterns';
+    if (location.hash === '#/track') store.refresh();
+    else location.hash = '#/track';
   },
 
   'seizure-open'(node, state) {
@@ -448,26 +490,31 @@ export const actions = {
     // Tapping the selected chip again clears it — these are guesses,
     // and an unsure answer should be easy to take back.
     draft[field] = draft[field] === value ? '' : value;
-    refreshSeizureSheet();
+    refreshSeizureSheet(`[data-action="sz-chip"][data-field="${field}"][data-value="${CSS.escape(value)}"]`);
   },
 
   async 'seizure-save'() {
     readSeizureDraft();
 
-    if (!draft.date || !draft.time) {
-      toast('A date and time are needed', 'bad');
+    const at = `${draft.date}T${draft.time}`;
+    if (!draft.date || !draft.time || !store.isStamp(at)) {
+      toast('A date and start time are needed', 'bad');
+      return;
+    }
+    if (parseStamp(at).getTime() > Date.now() + 60000) {
+      toast('That time is in the future', 'bad');
       return;
     }
 
     const payload = {
-      at: `${draft.date}T${draft.time}`,
+      at,
       duration: draft.duration,
       type: draft.type,
       trigger: draft.trigger,
       place: draft.place,
       aura: draft.aura,
-      injury: draft.injury,
-      emsCalled: draft.emsCalled,
+      injury: !!draft.injury,
+      emsCalled: !!draft.emsCalled,
       notes: draft.notes,
     };
     const editing = !!draft.id;
@@ -476,23 +523,20 @@ export const actions = {
     else await store.addSeizure(payload);
 
     closeSheet();
-    toast(editing ? 'Entry updated' : 'Seizure logged', 'ok');
+    toast(editing ? 'Entry updated' : 'Logged. Look after yourself today.', 'ok');
   },
 
   'seizure-delete'(node) {
     const id = node.dataset.id;
-    closeSheet();
-    setTimeout(() => {
-      confirmSheet({
-        title: 'Delete this entry?',
-        message: 'It will be removed from your history and from the pattern ' +
-                 'calculations. This cannot be undone.',
-        async onConfirm() {
-          await store.removeSeizure(id);
-          toast('Entry deleted');
-        },
-      });
-    }, 320);
+    confirmSheet({
+      title: 'Delete this entry?',
+      message: 'It will be removed from your history and from the pattern calculations. ' +
+               'This can\'t be undone.',
+      async onConfirm() {
+        await store.removeSeizure(id);
+        toast('Entry deleted');
+      },
+    });
   },
 
   'checkin-open'(node, state) {
@@ -507,26 +551,20 @@ export const actions = {
     openSheet({
       title: `Check-in · ${prettyDate(today)}`,
       body: checkinForm(),
-      footer: '<button class="btn btn-primary" data-action="checkin-save">Save</button>',
+      footer: '<button class="btn btn-primary" data-action="checkin-save">Save check-in</button>',
       onClose() { checkinDraft = null; },
     });
   },
 
   'checkin-sleep'(node) {
-    const v = sheetValues();
-    if (v.notes !== undefined) checkinDraft.notes = v.notes;
-    checkinDraft.sleepHours = clamp(
-      Math.round((checkinDraft.sleepHours + Number(node.dataset.delta)) * 2) / 2,
-      0, 16
-    );
-    refreshCheckinSheet();
+    const delta = Number(node.dataset.value);
+    checkinDraft.sleepHours = clamp(Math.round((checkinDraft.sleepHours + delta) * 2) / 2, 0, 16);
+    refreshCheckinSheet(`[data-action="checkin-sleep"][data-value="${node.dataset.value}"]`);
   },
 
   'checkin-stress'(node) {
-    const v = sheetValues();
-    if (v.notes !== undefined) checkinDraft.notes = v.notes;
     checkinDraft.stress = Number(node.dataset.value);
-    refreshCheckinSheet();
+    refreshCheckinSheet(`[data-action="checkin-stress"][data-value="${node.dataset.value}"]`);
   },
 
   async 'checkin-save'() {
@@ -539,7 +577,7 @@ export const actions = {
       sleepQuality: hours < 6 ? 'poor' : hours < 7 ? 'ok' : 'good',
       stress: checkinDraft.stress,
       mood: checkinDraft.stress >= 4 ? 'low' : 'ok',
-      notes: checkinDraft.notes,
+      notes: (checkinDraft.notes || '').trim(),
     });
 
     closeSheet();

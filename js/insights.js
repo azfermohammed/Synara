@@ -1,31 +1,33 @@
 /* ============================================================
-   insights.js — the pattern engine
+   insights.js — the pattern engine and the headline numbers
    ------------------------------------------------------------
-   Imported by views/seizures.js (the Patterns tab) and views/home.js
-   (which surfaces the single strongest insight).
+   Imported by the home, meds, seizures, and profile views.
 
    This is the part of the app most likely to be believed, so it is
    the part most obliged to be careful. Three rules:
 
-   1. NEVER INVENT A PATTERN. Every function here returns null when
-      the data behind it is too thin. An empty Patterns screen is a
-      correct answer; a confident-sounding coincidence is not.
+   1. NEVER INVENT A PATTERN. Every check returns null when the data
+      behind it is too thin. An empty Patterns screen is a correct
+      answer; a confident-sounding coincidence is not.
 
    2. REPORT THE EVIDENCE, NOT JUST THE CONCLUSION. Every insight
-      carries the counts it was computed from, and the UI shows them.
+      carries the counts it came from, and the UI shows them.
       "3 of 4 seizures" is checkable. "You often have seizures after
       missed doses" is not.
 
    3. SAY "ASSOCIATED WITH", NEVER "CAUSED BY". Four seizures is not
-      a study. The wording throughout is deliberately hedged, and
-      DISCLAIMER below is rendered at the bottom of the screen.
+      a study. DISCLAIMER below renders under the results.
+
+   Every count of doses goes through store.dosesOn(), which only
+   returns what was actually scheduled on that day. That is what stops
+   a medication added today from turning the last month red.
    ============================================================ */
 
 import {
   dayKey, addDays, parseStamp, daysBetween, lastNDays,
   tally, plural, prettySeconds,
 } from './util.js';
-import { effectiveStatus, doseStatus, activeMeds } from './store.js';
+import { effectiveStatus, doseStatus, dosesOn } from './store.js';
 
 export const DISCLAIMER =
   'These are associations in your own log, not medical conclusions. ' +
@@ -36,9 +38,54 @@ export const DISCLAIMER =
 const MIN_SEIZURES = 3;
 
 const avg = (nums) => nums.reduce((a, b) => a + b, 0) / nums.length;
+const dayOf = (s) => s.at.split('T')[0];
+
+/* ============================================================
+   Shared counting
+   ============================================================ */
 
 /**
- * Compute every insight worth showing, strongest first.
+ * Doses on time over a window of past days (today excluded — it is
+ * still in progress). `skipRecent` shifts the window back.
+ */
+function adherenceOver(state, days, skipRecent = 0) {
+  const today = dayKey();
+  let good = 0;
+  let total = 0;
+
+  for (let back = skipRecent + 1; back <= days; back++) {
+    const day = addDays(today, -back);
+    for (const { med, time } of dosesOn(day, state)) {
+      total++;
+      if (effectiveStatus(day, med.id, time, state) === 'taken') good++;
+    }
+  }
+  return { good, total };
+}
+
+/** Consecutive days back from yesterday with every scheduled dose taken on time. */
+function currentStreak(state) {
+  const today = dayKey();
+  let streak = 0;
+
+  for (let back = 1; back <= 365; back++) {
+    const day = addDays(today, -back);
+    const doses = dosesOn(day, state);
+    if (!doses.length) break;
+    const allTaken = doses.every(({ med, time }) =>
+      effectiveStatus(day, med.id, time, state) === 'taken');
+    if (!allTaken) break;
+    streak++;
+  }
+  return streak;
+}
+
+/* ============================================================
+   Insights
+   ============================================================ */
+
+/**
+ * Every insight worth showing, strongest first.
  * Returns [] rather than placeholder text when there is nothing real.
  */
 export function insights(state) {
@@ -64,80 +111,74 @@ export function topInsight(state) {
   return insights(state)[0] || null;
 }
 
-/* ============================================================
-   1. Seizures following a missed or late dose
-   ------------------------------------------------------------
-   The correlation the brief asked for first, and the most actionable
-   one: unlike sleep or stress, a missed dose is something the app
-   can directly help prevent.
-   ============================================================ */
+/* ---- 1. Seizures following a missed or late dose ----
+   The correlation the brief asked for first, and the most actionable:
+   unlike sleep or stress, a missed dose is something the app can
+   directly help prevent. */
 
 function doseProximity(state, sz) {
-  if (sz.length < MIN_SEIZURES) return null;
-
-  const meds = activeMeds(state);
-  if (!meds.length) return null;
+  if (sz.length < MIN_SEIZURES || !state.meds.length) return null;
 
   let followed = 0;
+  let checkable = 0;
 
   for (const s of sz) {
-    const day = s.at.split('T')[0];
+    const day = dayOf(s);
+    let anyScheduled = false;
     let hit = false;
 
-    // Look at the seizure day and the two days before it — a missed
-    // antiepileptic dose affects blood levels for well over 24h.
+    // The seizure day and the two before it — a missed antiepileptic
+    // dose affects blood levels for well over 24 hours.
     for (const offset of [0, -1, -2]) {
       const checkDay = addDays(day, offset);
-      for (const med of meds) {
-        for (const time of med.times) {
-          const status = effectiveStatus(checkDay, med.id, time, state);
-          if (status === 'missed' || status === 'late') { hit = true; break; }
-        }
-        if (hit) break;
+      for (const { med, time } of dosesOn(checkDay, state)) {
+        anyScheduled = true;
+        const status = effectiveStatus(checkDay, med.id, time, state);
+        if (status === 'missed' || status === 'late') { hit = true; break; }
       }
       if (hit) break;
     }
 
+    // A seizure from before any medication was tracked can't say
+    // anything either way, so it stays out of the denominator.
+    if (anyScheduled) checkable++;
     if (hit) followed++;
   }
 
-  if (followed < 2) return null;
+  if (checkable < MIN_SEIZURES || followed < 2) return null;
 
-  const pct = Math.round((followed / sz.length) * 100);
-  // Only worth saying if it is most of them. At 50% it is a coin flip.
-  if (pct < 60) return null;
+  const pct = Math.round((followed / checkable) * 100);
+  if (pct < 60) return null;   // at 50% it is a coin flip
 
   return {
     id: 'dose-proximity',
     tone: 'alert',
-    icon: '💊',
-    title: `${followed} of your ${sz.length} seizures followed a missed or late dose`,
+    icon: 'pill',
+    title: `${followed} of your ${checkable} seizures followed a missed or late dose`,
     detail:
-      `Within 48 hours of each of those ${plural(followed, 'seizure')}, at least one ` +
-      `scheduled dose was marked missed or late. This is the pattern most worth ` +
-      `mentioning at your next appointment.`,
-    evidence: `${followed}/${sz.length} seizures · ${pct}%`,
+      `Within 48 hours before each of those ${plural(followed, 'seizure')}, at least ` +
+      'one scheduled dose was marked missed or late. This is the pattern most worth ' +
+      'mentioning at your next appointment.',
+    evidence: `${followed}/${checkable} seizures · ${pct}%`,
     strength: 100 + pct,
   };
 }
 
-/* ============================================================
-   2. Sleep
-   ============================================================ */
+/* ---- 2. Sleep ---- */
 
-function sleepPattern(state, sz) {
-  const checkins = state.checkins || {};
-  const seizureDays = new Set(sz.map((s) => s.at.split('T')[0]));
-
+function splitByCheckin(state, sz, field) {
+  const seizureDays = new Set(sz.map(dayOf));
   const onSeizureDays = [];
   const onOtherDays = [];
-
-  for (const [day, c] of Object.entries(checkins)) {
-    if (typeof c.sleepHours !== 'number') continue;
-    (seizureDays.has(day) ? onSeizureDays : onOtherDays).push(c.sleepHours);
+  for (const [day, c] of Object.entries(state.checkins || {})) {
+    if (typeof c[field] !== 'number') continue;
+    (seizureDays.has(day) ? onSeizureDays : onOtherDays).push(c[field]);
   }
+  return { onSeizureDays, onOtherDays };
+}
 
-  // Need enough of both groups for the comparison to mean anything.
+function sleepPattern(state, sz) {
+  const { onSeizureDays, onOtherDays } = splitByCheckin(state, sz, 'sleepHours');
   if (onSeizureDays.length < MIN_SEIZURES || onOtherDays.length < 10) return null;
 
   const withSeizure = avg(onSeizureDays);
@@ -150,33 +191,21 @@ function sleepPattern(state, sz) {
   return {
     id: 'sleep',
     tone: 'alert',
-    icon: '🌙',
+    icon: 'moon',
     title: `You slept ${gap.toFixed(1)} hours less before seizure days`,
     detail:
-      `On the nights before a seizure you logged an average of ${withSeizure.toFixed(1)} ` +
-      `hours, against ${without.toFixed(1)} hours on every other night. Short sleep is one ` +
-      `of the most commonly reported seizure triggers.`,
+      `The nights before a seizure averaged ${withSeizure.toFixed(1)} hours, against ` +
+      `${without.toFixed(1)} on every other night. Short sleep is one of the most ` +
+      'commonly reported seizure triggers.',
     evidence: `${onSeizureDays.length} seizure nights vs ${onOtherDays.length} others`,
     strength: 90 + Math.min(20, gap * 10),
   };
 }
 
-/* ============================================================
-   3. Stress
-   ============================================================ */
+/* ---- 3. Stress ---- */
 
 function stressPattern(state, sz) {
-  const checkins = state.checkins || {};
-  const seizureDays = new Set(sz.map((s) => s.at.split('T')[0]));
-
-  const onSeizureDays = [];
-  const onOtherDays = [];
-
-  for (const [day, c] of Object.entries(checkins)) {
-    if (typeof c.stress !== 'number') continue;
-    (seizureDays.has(day) ? onSeizureDays : onOtherDays).push(c.stress);
-  }
-
+  const { onSeizureDays, onOtherDays } = splitByCheckin(state, sz, 'stress');
   if (onSeizureDays.length < MIN_SEIZURES || onOtherDays.length < 10) return null;
 
   const withSeizure = avg(onSeizureDays);
@@ -188,25 +217,23 @@ function stressPattern(state, sz) {
   return {
     id: 'stress',
     tone: 'watch',
-    icon: '🌊',
+    icon: 'wave',
     title: 'Seizure days were higher-stress days',
     detail:
       `You rated stress ${withSeizure.toFixed(1)} out of 5 on seizure days, against ` +
-      `${without.toFixed(1)} otherwise. Stress alone rarely triggers a seizure, but it ` +
-      `often travels with the things that do — less sleep, skipped meals, broken routine.`,
+      `${without.toFixed(1)} otherwise. Stress rarely acts alone — it tends to travel ` +
+      'with the things that do, like less sleep, skipped meals, and broken routine.',
     evidence: `${onSeizureDays.length} seizure days vs ${onOtherDays.length} others`,
     strength: 70 + gap * 10,
   };
 }
 
-/* ============================================================
-   4. Most common trigger
-   ============================================================ */
+/* ---- 4. Most common trigger ---- */
 
 function triggerPattern(sz) {
   if (sz.length < MIN_SEIZURES) return null;
 
-  const ranked = tally(sz.map((s) => s.trigger).filter(Boolean));
+  const ranked = tally(sz.map((s) => s.trigger).filter((t) => t && t !== 'None known'));
   if (!ranked.length || ranked[0].count < 2) return null;
 
   const top = ranked[0];
@@ -215,7 +242,7 @@ function triggerPattern(sz) {
   return {
     id: 'trigger',
     tone: 'watch',
-    icon: '⚡',
+    icon: 'bolt',
     title: `"${top.value}" is your most logged trigger`,
     detail:
       `You recorded it for ${plural(top.count, 'seizure')} out of ${sz.length}. ` +
@@ -227,16 +254,13 @@ function triggerPattern(sz) {
   };
 }
 
-/* ============================================================
-   5. Time-of-day clustering
-   ------------------------------------------------------------
-   Four-hour blocks. Finer buckets look precise but are meaningless
-   at these sample sizes.
-   ============================================================ */
+/* ---- 5. Time-of-day clustering ----
+   Four-hour blocks. Finer buckets look precise but are meaningless at
+   these sample sizes. */
 
 const BLOCKS = [
   { from: 0,  to: 4,  label: 'late at night (12am–4am)' },
-  { from: 4,  to: 8,  label: 'early morning (4am–8am)' },
+  { from: 4,  to: 8,  label: 'early in the morning (4am–8am)' },
   { from: 8,  to: 12, label: 'in the morning (8am–12pm)' },
   { from: 12, to: 16, label: 'in the early afternoon (12pm–4pm)' },
   { from: 16, to: 20, label: 'in the late afternoon (4pm–8pm)' },
@@ -249,13 +273,11 @@ function timeOfDayPattern(sz) {
   const counts = new Array(BLOCKS.length).fill(0);
   for (const s of sz) {
     const hour = parseStamp(s.at).getHours();
-    const idx = BLOCKS.findIndex((b) => hour >= b.from && hour < b.to);
-    if (idx >= 0) counts[idx]++;
+    counts[BLOCKS.findIndex((b) => hour >= b.from && hour < b.to)]++;
   }
 
   let best = 0;
   for (let i = 1; i < counts.length; i++) if (counts[i] > counts[best]) best = i;
-
   if (counts[best] < 2) return null;
 
   const pct = Math.round((counts[best] / sz.length) * 100);
@@ -264,81 +286,55 @@ function timeOfDayPattern(sz) {
   return {
     id: 'time-of-day',
     tone: 'neutral',
-    icon: '🕐',
+    icon: 'clock',
     title: `Most of your seizures happen ${BLOCKS[best].label}`,
     detail:
-      `${counts[best]} of ${sz.length} fell in that window. If that holds up, it is worth ` +
+      `${counts[best]} of ${sz.length} fell in that window. If it holds up, it is worth ` +
       'asking whether your dose timing lines up with it.',
     evidence: `${counts[best]}/${sz.length} seizures · ${pct}%`,
     strength: 40 + pct / 2,
   };
 }
 
-/* ============================================================
-   6. Where they happen
-   ============================================================ */
+/* ---- 6. Where they happen ---- */
 
 function placePattern(sz) {
   if (sz.length < MIN_SEIZURES) return null;
 
   const ranked = tally(sz.map((s) => s.place).filter(Boolean));
-  if (!ranked.length || ranked[0].count < 2) return null;
+  if (!ranked.length) return null;
 
-  const top = ranked[0];
   const atSchool = sz.filter((s) => /school/i.test(s.place || '')).length;
+  if (atSchool < 2 && ranked[0].count < 2) return null;
 
   return {
     id: 'place',
     tone: 'neutral',
-    icon: '📍',
+    icon: 'pin',
     title: atSchool >= 2
       ? `${atSchool} of ${sz.length} happened at school`
-      : `Most often at: ${top.value}`,
+      : `Most often at: ${ranked[0].value}`,
     detail: atSchool >= 2
-      ? 'Worth making sure the staff who are actually around you — not just the front ' +
-        'office — have seen your safety card.'
-      : `You logged ${plural(top.count, 'seizure')} there out of ${sz.length}.`,
-    evidence: `${top.count}/${sz.length} seizures`,
+      ? 'Worth making sure the staff actually around you — not just the front office — ' +
+        'have seen your safety card. Printing it from the Safety tab is the easiest way.'
+      : `You logged ${plural(ranked[0].count, 'seizure')} there out of ${sz.length}.`,
+    evidence: atSchool >= 2
+      ? `${atSchool}/${sz.length} seizures`
+      : `${ranked[0].count}/${sz.length} seizures`,
     strength: 35,
   };
 }
 
-/* ============================================================
-   7. Adherence trend — is it getting better or worse?
-   ============================================================ */
-
-function adherenceOver(state, meds, days, skipRecent = 0) {
-  const today = dayKey();
-  let good = 0;
-  let total = 0;
-
-  for (let back = skipRecent + 1; back <= days; back++) {
-    const day = addDays(today, -back);
-    for (const med of meds) {
-      for (const time of med.times) {
-        const status = effectiveStatus(day, med.id, time, state);
-        if (status === 'pending') continue;
-        total++;
-        if (status === 'taken') good++;
-      }
-    }
-  }
-  return { good, total };
-}
+/* ---- 7. Adherence trend ---- */
 
 function adherenceTrend(state) {
-  const meds = activeMeds(state);
-  if (!meds.length) return null;
-
-  const recent = adherenceOver(state, meds, 14);
-  const earlier = adherenceOver(state, meds, 45, 14);
-
+  const recent = adherenceOver(state, 14);
+  const earlier = adherenceOver(state, 45, 14);
   if (recent.total < 10 || earlier.total < 10) return null;
 
   const rPct = Math.round((recent.good / recent.total) * 100);
   const ePct = Math.round((earlier.good / earlier.total) * 100);
   const delta = rPct - ePct;
-
   if (Math.abs(delta) < 8) return null;   // noise
 
   const improving = delta > 0;
@@ -346,39 +342,32 @@ function adherenceTrend(state) {
   return {
     id: 'adherence-trend',
     tone: improving ? 'good' : 'alert',
-    icon: improving ? '📈' : '📉',
+    icon: improving ? 'trend-up' : 'trend-down',
     title: improving
       ? `Your dose consistency is up ${delta} points`
       : `Your dose consistency has slipped ${Math.abs(delta)} points`,
     detail:
       `${rPct}% of doses taken on time over the last 14 days, against ${ePct}% in the ` +
-      'month before that.' +
-      (improving ? ' Keep going.' : ' Worth a look at which dose is slipping.'),
+      'month before.' + (improving ? ' Keep going.' : ' Worth a look at which dose is slipping.'),
     evidence: `${recent.good}/${recent.total} recent · ${earlier.good}/${earlier.total} before`,
     strength: improving ? 50 : 85,
   };
 }
 
-/* ============================================================
-   8. Are seizures getting more or less frequent?
-   ============================================================ */
+/* ---- 8. Frequency trend ---- */
 
 function frequencyTrend(sz) {
   if (sz.length < 4) return null;
 
   const today = dayKey();
-  const sorted = [...sz].sort((a, b) => (a.at < b.at ? -1 : 1));
-  const oldest = sorted[0].at.split('T')[0];
+  const oldest = sz.map(dayOf).sort()[0];
   const span = daysBetween(oldest, today);
-
   if (span < 30) return null;
 
   const half = Math.floor(span / 2);
   const midpoint = addDays(today, -half);
-
-  const recent = sz.filter((s) => s.at.split('T')[0] > midpoint).length;
+  const recent = sz.filter((s) => dayOf(s) > midpoint).length;
   const earlier = sz.length - recent;
-
   if (recent === earlier) return null;
 
   const fewer = recent < earlier;
@@ -386,61 +375,34 @@ function frequencyTrend(sz) {
   return {
     id: 'frequency',
     tone: fewer ? 'good' : 'alert',
-    icon: fewer ? '🌤️' : '⚠️',
+    icon: fewer ? 'sun' : 'alert',
     title: fewer
       ? 'Fewer seizures in the most recent stretch'
       : 'More seizures in the most recent stretch',
     detail:
       `${plural(recent, 'seizure')} in the last ${half} days, against ${earlier} in the ` +
-      `${half} days before. Over a window this short, a change like this can easily be ` +
-      'chance — it is worth watching, not concluding.',
+      `${half} days before. Over a window this short a change like this can easily be ` +
+      'chance — worth watching, not concluding.',
     evidence: `${recent} recent vs ${earlier} earlier`,
     strength: fewer ? 45 : 80,
   };
 }
 
 /* ============================================================
-   Summary stats — used by the home dashboard and the Patterns header
+   Headline numbers — home dashboard, Patterns header, profile
    ============================================================ */
 
-/** Consecutive days back from yesterday with every dose taken on time. */
-function currentStreak(state, meds) {
-  if (!meds.length) return 0;
-  const today = dayKey();
-  let streak = 0;
-
-  for (let back = 1; back <= 120; back++) {
-    const day = addDays(today, -back);
-    let allGood = true;
-    let any = false;
-
-    for (const med of meds) {
-      for (const time of med.times) {
-        const status = effectiveStatus(day, med.id, time, state);
-        if (status === 'pending') continue;
-        any = true;
-        if (status !== 'taken') { allGood = false; break; }
-      }
-      if (!allGood) break;
-    }
-
-    if (!any || !allGood) break;
-    streak++;
-  }
-  return streak;
-}
-
 export function summary(state) {
-  const meds = activeMeds(state);
   const sz = state.seizures || [];
   const today = dayKey();
 
-  const { good, total } = adherenceOver(state, meds, 30);
+  const { good, total } = adherenceOver(state, 30);
   const adherence = total ? Math.round((good / total) * 100) : null;
 
-  const lastSeizure = sz.length ? sz[0].at.split('T')[0] : null;
+  // Don't trust array order — an imported or synced record may not be sorted.
+  const lastSeizure = sz.length ? sz.map(dayOf).sort().pop() : null;
   const daysSince = lastSeizure ? daysBetween(lastSeizure, today) : null;
-  const last30 = sz.filter((s) => daysBetween(s.at.split('T')[0], today) <= 30).length;
+  const last30 = sz.filter((s) => daysBetween(dayOf(s), today) <= 30).length;
 
   const durations = sz.map((s) => s.duration).filter((d) => d > 0);
   const avgDuration = durations.length ? Math.round(avg(durations)) : null;
@@ -455,14 +417,13 @@ export function summary(state) {
     totalSeizures: sz.length,
     avgDuration,
     avgDurationLabel: avgDuration ? prettySeconds(avgDuration) : null,
-    streak: currentStreak(state, meds),
+    streak: currentStreak(state),
   };
 }
 
-/** Per-day status rollup for the calendar heatmap. */
+/** Per-day rollup for the adherence calendar. */
 export function calendarDays(state, days = 28) {
-  const meds = activeMeds(state);
-  const seizureDays = new Set((state.seizures || []).map((s) => s.at.split('T')[0]));
+  const seizureDays = new Set((state.seizures || []).map(dayOf));
   const today = dayKey();
 
   return lastNDays(days).map((day) => {
@@ -470,21 +431,18 @@ export function calendarDays(state, days = 28) {
     let total = 0;
     let worst = 'none';
 
-    for (const med of meds) {
-      for (const time of med.times) {
-        // Today is still in progress. Counting an unlogged morning dose
-        // as missed at 2pm would paint today red while the student can
-        // still log it — honest for statistics, wrong for a calendar.
-        const status = day === today
-          ? doseStatus(day, med.id, time, state)
-          : effectiveStatus(day, med.id, time, state);
-        if (status === 'pending') continue;
-        total++;
-        if (status === 'taken') taken++;
-        if (status === 'missed') worst = 'missed';
-        else if (status === 'late' && worst !== 'missed') worst = 'late';
-        else if (worst === 'none') worst = 'taken';
-      }
+    for (const { med, time } of dosesOn(day, state)) {
+      // Today is still in progress: an unlogged morning dose shouldn't
+      // paint today red at 2pm while it can still be logged.
+      const status = day === today
+        ? doseStatus(day, med.id, time, state)
+        : effectiveStatus(day, med.id, time, state);
+      if (status === 'pending') continue;
+      total++;
+      if (status === 'taken') taken++;
+      if (status === 'missed') worst = 'missed';
+      else if (status === 'late' && worst !== 'missed') worst = 'late';
+      else if (worst === 'none') worst = 'taken';
     }
 
     return {
@@ -492,7 +450,6 @@ export function calendarDays(state, days = 28) {
       taken,
       total,
       status: total === 0 ? 'none' : worst,
-      ratio: total ? taken / total : null,
       seizure: seizureDays.has(day),
     };
   });

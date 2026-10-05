@@ -3,16 +3,21 @@
    ------------------------------------------------------------
    Loaded by index.html as a module.
 
-   Rendering is deliberately dumb: views are pure functions from state
-   to an HTML string, and any store change re-renders the current
-   screen. At this size that is fast, and it removes a whole class of
-   bug where the UI and the data drift apart.
+   Rendering is deliberately simple: views are pure functions from
+   state to an HTML string, and any store change re-renders the current
+   screen. At this size that is fast, and it removes the whole class of
+   bug where the UI and the data drift apart. The two costs of that
+   approach — lost scroll position and lost keyboard focus — are both
+   paid back explicitly in render().
    ============================================================ */
 
 import * as store from './store.js';
 import { seed } from './seed.js';
 import { html, raw, esc, dayKey } from './util.js';
-import { icon, toast, closeSheet, closeEmergency, isEmergencyOpen } from './ui.js';
+import {
+  icon, toast, closeSheet, closeEmergency, isEmergencyOpen,
+  openWelcome, closeWelcome, focusKey, refocus,
+} from './ui.js';
 import * as notify from './notify.js';
 
 import * as home     from './views/home.js';
@@ -36,23 +41,51 @@ const TABS = {
   you:    { label: 'You',      icon: 'user' },
 };
 
+/* #/sos opens the emergency card on top of the Safety tab. It is what
+   the home-screen shortcut points at: long-press the app icon, tap
+   "Emergency card", and the card is up — no navigation at all. */
+const ALIASES = { sos: 'safety' };
+
 let route = 'home';
 
 const el = {
+  shell:  document.querySelector('.app-shell'),
   appbar: document.getElementById('appbar'),
   screen: document.getElementById('screen'),
   tabbar: document.getElementById('tabbar'),
-  welcome: document.getElementById('welcome'),
 };
 
-function routeFromHash() {
-  const id = (location.hash || '').replace(/^#\/?/, '').split('/')[0];
-  return ORDER.includes(id) ? id : 'home';
+function parseHash() {
+  const id = (location.hash || '').replace(/^#\/?/, '').split(/[/?]/)[0];
+  if (ALIASES[id]) return { route: ALIASES[id], sos: id === 'sos' };
+  return { route: ORDER.includes(id) ? id : 'home', sos: false };
 }
 
 export function go(id) {
   if (!ORDER.includes(id)) return;
+  if (location.hash === `#/${id}`) return;
   location.hash = `#/${id}`;
+}
+
+/* ============================================================
+   Theme
+   ============================================================ */
+
+/** Reflect the stored theme choice onto <html> and the browser chrome. */
+export function applyTheme(theme) {
+  const root = document.documentElement;
+  if (theme === 'light' || theme === 'dark') root.setAttribute('data-theme', theme);
+  else root.removeAttribute('data-theme');
+
+  // Keep the status bar / title bar colour in step with an explicit
+  // choice; with "system" the two media-scoped tags already do it.
+  const dark = theme === 'dark' ||
+    (theme !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+  for (const meta of document.querySelectorAll('meta[name="theme-color"]')) {
+    meta.content = theme === 'system'
+      ? (meta.media.includes('dark') ? '#121019' : '#f6f5fa')
+      : (dark ? '#121019' : '#f6f5fa');
+  }
 }
 
 /* ============================================================
@@ -68,17 +101,13 @@ function brandMark() {
 /** Doses scheduled today that still have no logged status. */
 function countPendingToday(state) {
   const today = dayKey();
-  let n = 0;
-  for (const med of store.activeMeds(state)) {
-    for (const time of med.times) {
-      if (store.doseStatus(today, med.id, time, state) === 'pending') n++;
-    }
-  }
-  return n;
+  return store.dosesOn(today, state)
+    .filter(({ med, time }) => store.doseStatus(today, med.id, time, state) === 'pending')
+    .length;
 }
 
 function renderTabs(state) {
-  const pendingToday = countPendingToday(state);
+  const pending = countPendingToday(state);
 
   el.tabbar.innerHTML = html`
     <div class="sidebar-brand">
@@ -91,15 +120,22 @@ function renderTabs(state) {
     ${raw(ORDER.map((id) => {
       const tab = TABS[id];
       const current = id === route;
-      const dot = id === 'meds' && pendingToday > 0;
+      const dot = id === 'meds' && pending > 0;
+      const label = dot
+        ? `${tab.label}, ${pending} ${pending === 1 ? 'dose' : 'doses'} not logged today`
+        : tab.label;
       return `
         <button class="tab" data-action="nav" data-to="${id}"
-                ${current ? 'aria-current="page"' : ''}>
+                ${current ? 'aria-current="page"' : ''} aria-label="${label}">
           <span class="tab-ico">${icon(tab.icon)}</span>
           <span class="tab-label">${tab.label}</span>
-          ${dot ? `<span class="tab-dot" aria-label="${pendingToday} doses due"></span>` : ''}
+          ${dot ? '<span class="tab-dot" aria-hidden="true"></span>' : ''}
         </button>`;
     }).join(''))}
+    <button class="sidebar-sos" data-action="open-emergency">
+      ${raw(icon('shield', 18))}
+      <span>Open emergency card</span>
+    </button>
   `;
 }
 
@@ -110,48 +146,52 @@ function renderAppbar(state) {
 
   el.appbar.innerHTML = html`
     <div class="appbar-title">
-      <span class="appbar-t">${title}</span>
+      <h1 class="appbar-t">${title}</h1>
       ${raw(sub ? `<span class="appbar-s">${esc(sub)}</span>` : '')}
     </div>
     <button class="sos-btn" data-action="open-emergency"
-            aria-label="Open emergency seizure card">
-      SOS
+            aria-label="Open the emergency seizure card">
+      ${raw(icon('shield', 16))}<span>SOS</span>
     </button>
   `;
 }
 
 function renderScreen(state) {
-  // Hold the scroll position across re-renders. Without this, marking
-  // a dose taken halfway down the meds list throws you back to the top.
-  const top = el.screen.scrollTop;
   el.screen.innerHTML = html`
-    <div class="screen-inner">${raw(VIEWS[route].render(state))}</div>
+    <div class="screen-inner" data-route="${route}">${raw(VIEWS[route].render(state))}</div>
   `;
-  el.screen.scrollTop = top;
 }
 
 function render() {
   const state = store.get();
+
+  // Remember where the user was, so a re-render doesn't throw away
+  // their scroll position or keyboard focus.
+  const top = el.screen.scrollTop;
+  const active = document.activeElement;
+  const key = active && el.shell.contains(active) ? focusKey(active) : null;
+
   document.title = `${TABS[route].label} · Synara`;
-  // Theme is derived from state, so it is applied here rather than
-  // imperatively from the settings view — that would be an import cycle.
   applyTheme(state.settings.theme);
   renderTabs(state);
   renderAppbar(state);
   renderScreen(state);
+
+  el.screen.scrollTop = top;
+  if (key) refocus(key, el.shell);
 }
 
 /* ============================================================
    First run
    ------------------------------------------------------------
-   Asked once, before anything is written to storage. The demo data
-   is genuinely useful for showing the app to someone, but it is
-   somebody else's medical history — a real student has to be able
-   to decline it rather than find it already filled in.
+   Asked once, before anything is written to storage. The example data
+   is useful for showing the app to someone, but it is somebody else's
+   medical history — a real student has to be able to decline it rather
+   than find it already filled in.
    ============================================================ */
 
 function showWelcome() {
-  el.welcome.innerHTML = html`
+  openWelcome(html`
     <div class="welcome-inner">
       <div class="brand-mark welcome-mark">${raw(brandMark())}</div>
       <h1 class="welcome-h1">Synara</h1>
@@ -159,6 +199,12 @@ function showWelcome() {
         Your medication, your seizures, and the card someone needs if you
         have one at school — all in one place.
       </p>
+
+      <ul class="welcome-points">
+        <li>${raw(icon('pill', 18))}<span>Dose reminders and a history you can show your doctor</span></li>
+        <li>${raw(icon('chart', 18))}<span>A seizure log that looks for patterns for you</span></li>
+        <li>${raw(icon('shield', 18))}<span>An emergency card anyone can follow, one tap away</span></li>
+      </ul>
 
       <div class="welcome-actions">
         <button class="btn btn-primary btn-lg btn-block" data-action="welcome-empty">
@@ -170,26 +216,12 @@ function showWelcome() {
       </div>
 
       <p class="welcome-note">
-        Everything stays on this device — nothing is uploaded and there is no
-        account. Synara is a student project, not a medical device.
+        ${raw(icon('lock', 14))}
+        <span>Everything stays on this device — nothing is uploaded and there is
+        no account. Synara is a student project, not a medical device.</span>
       </p>
     </div>
-  `;
-  el.welcome.hidden = false;
-  // Force layout so the transition has a start value to animate from.
-  // requestAnimationFrame would be the usual trick, but it is throttled
-  // in background and headless contexts — and if it never fires, this
-  // overlay sits at opacity 0 while still covering the entire screen.
-  void el.welcome.offsetHeight;
-  el.welcome.dataset.open = 'true';
-}
-
-function hideWelcome() {
-  delete el.welcome.dataset.open;
-  setTimeout(() => {
-    el.welcome.hidden = true;
-    el.welcome.innerHTML = '';
-  }, 250);
+  `);
 }
 
 /* ============================================================
@@ -205,8 +237,8 @@ const ACTIONS = {
     go(node.dataset.to);
   },
 
-  'close-sheet': closeSheet,
-  'close-emergency': closeEmergency,
+  'close-sheet'() { closeSheet(); },
+  'close-emergency'() { closeEmergency(); },
 
   'open-emergency'() {
     safety.showEmergency(store.get());
@@ -214,114 +246,123 @@ const ACTIONS = {
 
   async 'welcome-demo'() {
     await store.reset({ seedFn: seed });
-    hideWelcome();
-    toast('Loaded with example data — clear it any time in You', 'ok');
+    closeWelcome();
+    toast('Loaded example data — clear it any time in You', 'ok');
   },
 
   async 'welcome-empty'() {
     await store.reset();
-    hideWelcome();
+    closeWelcome();
     go('meds');
     toast('Start by adding your medication', 'ok');
+  },
+
+  reload() {
+    location.reload();
   },
 };
 
 // Merge each view's actions. A view that needs a name already taken
-// should namespace it (e.g. "meds:save") rather than silently win.
+// should namespace it rather than silently win.
 for (const view of Object.values(VIEWS)) {
   if (!view.actions) continue;
   for (const [name, fn] of Object.entries(view.actions)) {
-    if (ACTIONS[name]) {
-      console.warn(`[synara] duplicate action "${name}" — check view exports`);
-    }
+    if (ACTIONS[name]) console.warn(`[synara] duplicate action "${name}"`);
     ACTIONS[name] = fn;
   }
 }
 
+function run(name, node) {
+  const handler = ACTIONS[name];
+  if (!handler) return false;
+  Promise.resolve(handler(node, store.get())).catch((err) => {
+    console.error('[synara] action failed:', name, err);
+    toast(err && err.message === 'save-failed'
+      ? 'Could not save — your browser storage may be full or blocked.'
+      : 'Something went wrong. Please try that again.', 'bad');
+  });
+  return true;
+}
+
 document.addEventListener('click', (e) => {
   const node = e.target.closest('[data-action]');
-  if (!node) return;
-
-  const handler = ACTIONS[node.dataset.action];
-  if (!handler) return;
-
-  e.preventDefault();
-  Promise.resolve(handler(node, store.get())).catch((err) => {
-    console.error('[synara] action failed:', node.dataset.action, err);
-    toast('Something went wrong saving that.', 'bad');
-  });
+  if (!node || node.tagName === 'FORM') return;
+  if (run(node.dataset.action, node)) e.preventDefault();
 });
 
-/* Submitting a form in a sheet should behave like tapping its primary
-   button, not reload the page. */
+/* Enter in a sheet form behaves like its primary button rather than
+   reloading the page. */
 document.addEventListener('submit', (e) => {
   const form = e.target.closest('form[data-action]');
   if (!form) return;
   e.preventDefault();
-  const handler = ACTIONS[form.dataset.action];
-  if (!handler) return;
-  Promise.resolve(handler(form, store.get())).catch((err) => {
-    console.error('[synara] submit failed:', err);
-    toast('Something went wrong saving that.', 'bad');
-  });
+  run(form.dataset.action, form);
+});
+
+/* File inputs (import) fire `change`, not `click`. */
+document.addEventListener('change', (e) => {
+  const node = e.target.closest('[data-change]');
+  if (node) run(node.dataset.change, node);
 });
 
 /* ============================================================
    Boot
    ============================================================ */
 
-/** Reflect the stored theme choice onto <html>. */
-export function applyTheme(theme) {
-  const root = document.documentElement;
-  if (theme === 'light' || theme === 'dark') root.setAttribute('data-theme', theme);
-  else root.removeAttribute('data-theme');
+function onHashChange() {
+  const next = parseHash();
+  if (next.route !== route) {
+    route = next.route;
+    if (isEmergencyOpen() && !next.sos) closeEmergency();
+    closeSheet();
+    el.screen.scrollTop = 0;
+    render();
+  }
+  if (next.sos) {
+    safety.showEmergency(store.get());
+    // Drop the alias so closing the card and pressing back behave normally.
+    history.replaceState(null, '', '#/safety');
+  }
 }
 
-/* The home screen shows a live countdown to the next dose, so it has
-   to re-render on its own. Once a minute is enough — anything faster
-   is wasted work and, on this app specifically, unnecessary motion. */
+/* The home screen shows a live countdown, and every screen has a
+   notion of "today". Once a minute is enough — anything faster is
+   wasted work and, in this app specifically, unnecessary motion. */
 function startClock() {
+  let lastDay = dayKey();
   setInterval(() => {
-    if (route === 'home' && !isEmergencyOpen()) render();
+    if (isEmergencyOpen()) return;
+    const today = dayKey();
+    if (route === 'home' || today !== lastDay) render();
+    lastDay = today;
   }, 60000);
 }
 
 function registerServiceWorker() {
-  if (!('serviceWorker' in navigator)) return;
-  // file:// has no service worker scope; only register over http(s).
-  if (location.protocol === 'file:') return;
-
+  if (!('serviceWorker' in navigator) || location.protocol === 'file:') return;
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('sw.js').catch((err) => {
-      // Offline support is a bonus, not a requirement. Never block boot.
+      // Offline support is a bonus, never a reason to fail to start.
       console.warn('[synara] service worker not registered:', err);
     });
   });
 }
 
-window.addEventListener('hashchange', () => {
-  const next = routeFromHash();
-  if (next === route) return;
-  route = next;
-
-  // Leaving a screen with an overlay up should close it, or the back
-  // button appears to do nothing.
-  if (isEmergencyOpen()) closeEmergency();
-
-  el.screen.scrollTop = 0;
-  render();
-});
-
 async function boot() {
-  route = routeFromHash();
+  const first = parseHash();
+  route = first.route;
 
   const { firstRun } = await store.init();
 
-  applyTheme(store.get().settings.theme);
   store.subscribe(render);
   render();
 
   if (firstRun) showWelcome();
+  else if (first.sos) onHashChange();
+
+  window.addEventListener('hashchange', onHashChange);
+  window.matchMedia('(prefers-color-scheme: dark)')
+    .addEventListener('change', () => applyTheme(store.get().settings.theme));
 
   notify.start();
   registerServiceWorker();
@@ -333,7 +374,7 @@ boot().catch((err) => {
   el.screen.innerHTML = html`
     <div class="screen-inner">
       <div class="empty">
-        <span class="empty-ico">😕</span>
+        <span class="empty-ico">${raw(icon('alert', 32))}</span>
         <span class="empty-t">Synara couldn't start</span>
         <span class="empty-s">
           Your browser may be blocking local storage. Try turning off private
@@ -343,5 +384,4 @@ boot().catch((err) => {
       </div>
     </div>
   `;
-  ACTIONS.reload = () => location.reload();
 });

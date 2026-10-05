@@ -12,7 +12,7 @@
    ============================================================ */
 
 import {
-  html, raw, map, esc, dayKey, timeOf, minutesOf,
+  html, raw, esc, dayKey, addDays, timeOf, minutesOf,
   prettyTime, prettyDuration, plural, doseLabel,
 } from '../util.js';
 import * as store from '../store.js';
@@ -25,6 +25,7 @@ import { icon, toast } from '../ui.js';
 
 function greeting() {
   const h = new Date().getHours();
+  if (h < 5) return 'Hi';
   if (h < 12) return 'Good morning';
   if (h < 18) return 'Good afternoon';
   return 'Good evening';
@@ -38,48 +39,50 @@ export function title(state) {
 export function subtitle(state) {
   if (!store.activeMeds(state).length) return 'No medications added yet';
   const pending = todaysDoses(state).filter((d) => d.status === 'pending').length;
-  return pending
-    ? `${plural(pending, 'dose')} left today`
-    : 'All doses logged for today';
+  return pending ? `${plural(pending, 'dose')} left to log today` : 'Every dose logged for today';
 }
 
 /* ============================================================
    Dose helpers
    ============================================================ */
 
-/** Every dose scheduled today, in time order, with its live status. */
 function todaysDoses(state) {
   const today = dayKey();
-  const out = [];
-  for (const med of store.activeMeds(state)) {
-    for (const time of med.times) {
-      out.push({
-        med,
-        time,
-        status: store.doseStatus(today, med.id, time, state),
-      });
-    }
-  }
-  return out.sort((a, b) => minutesOf(a.time) - minutesOf(b.time));
+  return store.dosesOn(today, state).map(({ med, time }) => ({
+    med, time, status: store.doseStatus(today, med.id, time, state),
+  }));
 }
 
 /**
- * The next dose still to take.
- *
- * Prefers the next one coming up; if everything upcoming is handled
- * but something earlier today was never logged, surface that instead —
- * a forgotten 8am dose is more urgent than a scheduled 8pm one.
+ * What the big card should be about, in priority order:
+ *   1. a dose due right now (inside the grace window) — take it now
+ *   2. the most recent dose past its window and still unlogged
+ *   3. the next one coming up
+ * A dose due now beats a stale one from this morning: it is the one
+ * that can still be taken on time.
  */
 function nextDose(state) {
-  const doses = todaysDoses(state).filter((d) => d.status === 'pending');
-  if (!doses.length) return null;
+  const pending = todaysDoses(state).filter((d) => d.status === 'pending');
+  if (!pending.length) return null;
 
-  const nowMins = minutesOf(timeOf());
-  const overdue = doses.filter((d) => minutesOf(d.time) < nowMins);
-  if (overdue.length) return { ...overdue[overdue.length - 1], overdue: true };
+  const now = minutesOf(timeOf());
+  const lateBy = (d) => now - minutesOf(d.time);
 
-  const upcoming = doses.filter((d) => minutesOf(d.time) >= nowMins);
-  return upcoming.length ? { ...upcoming[0], overdue: false } : null;
+  const dueNow = pending.find((d) => lateBy(d) >= 0 && lateBy(d) <= store.GRACE_MINUTES);
+  if (dueNow) return { ...dueNow, mode: 'due', others: pending.length - 1 };
+
+  const overdue = pending.filter((d) => lateBy(d) > store.GRACE_MINUTES);
+  if (overdue.length) {
+    return { ...overdue[overdue.length - 1], mode: 'overdue', others: pending.length - 1 };
+  }
+
+  return { ...pending[0], mode: 'upcoming', others: pending.length - 1 };
+}
+
+/** First dose tomorrow, for the all-clear card. */
+function firstTomorrow(state) {
+  const tomorrow = addDays(dayKey(), 1);
+  return store.dosesOn(tomorrow, state)[0] || null;
 }
 
 /* ============================================================
@@ -87,18 +90,24 @@ function nextDose(state) {
    ============================================================ */
 
 export function render(state) {
-  const meds = store.activeMeds(state);
+  const hasMeds = store.activeMeds(state).length > 0;
   const stats = summary(state);
   const insight = topInsight(state);
   const checkedIn = !!store.getCheckin(dayKey(), state);
 
   return html`
-    ${raw(meds.length ? nextDoseCard(state) : noMedsCard())}
-    ${raw(statsStrip(stats))}
-    ${raw(meds.length ? todayCard(state) : '')}
-    ${raw(checkedIn ? '' : checkinPrompt())}
-    ${raw(insight ? insightCard(insight) : '')}
-    ${raw(quickActions())}
+    <div class="home-grid">
+      <div class="home-main">
+        ${raw(hasMeds ? nextDoseCard(state) : noMedsCard())}
+        ${raw(hasMeds ? todayCard(state) : '')}
+      </div>
+      <div class="home-side">
+        ${raw(statsStrip(stats))}
+        ${raw(checkedIn ? '' : checkinPrompt())}
+        ${raw(insight ? insightCard(insight) : '')}
+        ${raw(quickActions())}
+      </div>
+    </div>
   `;
 }
 
@@ -108,63 +117,84 @@ function nextDoseCard(state) {
   const next = nextDose(state);
 
   if (!next) {
+    const tomorrow = firstTomorrow(state);
     return html`
-      <div class="card next-dose" data-state="clear">
+      <section class="card next-dose" data-state="clear" aria-label="Today's doses">
         <span class="eyebrow">Today</span>
-        <div class="next-dose-when">All clear</div>
+        <div class="next-dose-when">All done</div>
         <span class="next-dose-what">
-          Every dose logged. That is the whole job done for today.
+          Every dose today is logged.${raw(tomorrow
+            ? ` First one tomorrow: ${esc(tomorrow.med.name)} at ${prettyTime(tomorrow.time)}.`
+            : '')}
         </span>
-      </div>
+      </section>
     `;
   }
 
-  const mins = minutesOf(next.time) - minutesOf(timeOf());
-  const when = next.overdue
-    ? `${prettyDuration(-mins)} overdue`
-    : mins <= 1 ? 'Now' : `in ${prettyDuration(mins)}`;
+  const delta = minutesOf(next.time) - minutesOf(timeOf());
+  const when =
+    next.mode === 'overdue' ? `${prettyDuration(-delta)} overdue` :
+    next.mode === 'due' ? 'Due now' :
+    delta <= 1 ? 'Due now' : `in ${prettyDuration(delta)}`;
+
+  const eyebrow =
+    next.mode === 'overdue' ? 'Not logged yet' :
+    next.mode === 'due' ? 'Take it now' : 'Next dose';
+
+  const buttons = next.mode === 'overdue'
+    ? `<button class="btn btn-on-brand" data-action="dose-quick"
+               data-med="${next.med.id}" data-time="${next.time}" data-status="late">
+         ${icon('check', 18)} Took it late
+       </button>
+       <button class="btn btn-on-brand-ghost" data-action="dose-quick"
+               data-med="${next.med.id}" data-time="${next.time}" data-status="missed">
+         Missed it
+       </button>`
+    : `<button class="btn btn-on-brand" data-action="dose-quick"
+               data-med="${next.med.id}" data-time="${next.time}" data-status="taken">
+         ${icon('check', 18)} Mark taken
+       </button>
+       ${next.mode === 'due'
+         ? `<button class="btn btn-on-brand-ghost" data-action="dose-quick"
+                    data-med="${next.med.id}" data-time="${next.time}" data-status="missed">
+              Skip
+            </button>`
+         : ''}`;
 
   return html`
-    <div class="card next-dose">
-      <span class="eyebrow">${next.overdue ? 'Missed earlier' : 'Next dose'}</span>
+    <section class="card next-dose" data-state="${next.mode}" aria-label="Next dose">
+      <span class="eyebrow">${eyebrow}</span>
       <div class="next-dose-when">${when}</div>
       <span class="next-dose-what">
-        ${next.med.name} ${next.med.dose} · ${prettyTime(next.time)}
+        ${next.med.name}${next.med.dose ? ` ${next.med.dose}` : ''} · ${prettyTime(next.time)}
       </span>
-      <div class="next-dose-actions">
-        <button class="btn btn-on-brand"
-                data-action="dose-quick"
-                data-med="${next.med.id}" data-time="${next.time}"
-                data-status="${next.overdue ? 'late' : 'taken'}">
-          ${next.overdue ? 'Taken late' : 'Mark taken'}
-        </button>
-        <button class="btn btn-on-brand-ghost"
-                data-action="dose-quick"
-                data-med="${next.med.id}" data-time="${next.time}"
-                data-status="missed">
-          Missed
-        </button>
-      </div>
-    </div>
+      <div class="next-dose-actions">${raw(buttons)}</div>
+      ${raw(next.others > 0
+        // "Not logged" for doses that aren't due yet reads like a failure,
+        // so upcoming ones are just "later today".
+        ? `<button class="next-dose-more" data-action="nav" data-to="meds">
+             ${next.others} more ${next.mode === 'upcoming' ? 'later today' : 'to log today'} ${icon('chevron', 14)}
+           </button>`
+        : '')}
+    </section>
   `;
 }
 
 function noMedsCard() {
   return html`
-    <div class="card next-dose">
+    <section class="card next-dose" data-state="empty" aria-label="Get started">
       <span class="eyebrow">Get started</span>
-      <div class="next-dose-when" style="font-size:var(--t-xl)">
-        Add your first medication
-      </div>
+      <div class="next-dose-when next-dose-when-sm">Add your first medication</div>
       <span class="next-dose-what">
-        Name, dose, and what time you take it. Takes about twenty seconds.
+        Name, dose, and the times you take it. About twenty seconds — then
+        every dose gets tracked from today on.
       </span>
       <div class="next-dose-actions">
-        <button class="btn btn-on-brand" data-action="nav" data-to="meds">
-          Add a medication
+        <button class="btn btn-on-brand" data-action="med-open">
+          ${raw(icon('plus', 18))} Add a medication
         </button>
       </div>
-    </div>
+    </section>
   `;
 }
 
@@ -177,18 +207,18 @@ function statsStrip(stats) {
     stats.adherence >= 75 ? 'warn' : 'bad';
 
   return html`
-    <div class="stats">
-      <div class="stat" data-tone="${tone}">
+    <div class="stats" role="list" aria-label="Your numbers">
+      <div class="stat" data-tone="${tone}" role="listitem">
         <span class="stat-n">${stats.adherence == null ? '—' : `${stats.adherence}%`}</span>
-        <span class="stat-l">Doses on time<br/>last 30 days</span>
+        <span class="stat-l">${stats.adherence == null ? 'Doses on time — from tomorrow' : 'Doses on time, last 30 days'}</span>
       </div>
-      <div class="stat">
+      <div class="stat" role="listitem">
         <span class="stat-n">${stats.daysSince == null ? '—' : stats.daysSince}</span>
-        <span class="stat-l">Days since<br/>last seizure</span>
+        <span class="stat-l">Days since last seizure</span>
       </div>
-      <div class="stat" data-tone="${stats.streak >= 7 ? 'ok' : ''}">
+      <div class="stat" data-tone="${stats.streak >= 7 ? 'ok' : ''}" role="listitem">
         <span class="stat-n">${stats.streak}</span>
-        <span class="stat-l">Day streak<br/>all doses taken</span>
+        <span class="stat-l">Day streak, every dose on time</span>
       </div>
     </div>
   `;
@@ -202,36 +232,34 @@ function todayCard(state) {
   const doses = todaysDoses(state);
   const today = dayKey();
 
-  return html`
-    <div class="section">
-      <div class="section-head">
-        <h2>Today</h2>
-        <button class="btn btn-sm btn-quiet" data-action="nav" data-to="meds">
-          All meds
+  const rows = doses.map((d) => {
+    const label = doseLabel(d.status, d.time);
+    return `
+      <li class="dose-row">
+        <span class="med-dot" data-color="${esc(d.med.color)}" aria-hidden="true">${icon('pill', 20)}</span>
+        <span class="dose-body">
+          <span class="dose-name">${esc(d.med.name)} <span class="dose-amt">${esc(d.med.dose)}</span></span>
+          <span class="dose-meta" data-status="${d.status}">${prettyTime(d.time)} · ${label}</span>
+        </span>
+        <button class="tick" data-status="${d.status}" data-action="dose-cycle"
+                data-med="${d.med.id}" data-time="${d.time}" data-day="${today}"
+                aria-label="${esc(d.med.name)} at ${prettyTime(d.time)}: ${label}. Tap to change.">
+          ${GLYPH[d.status]}
         </button>
+      </li>`;
+  }).join('');
+
+  return html`
+    <section class="section" aria-labelledby="today-h">
+      <div class="section-head">
+        <h2 id="today-h">Today</h2>
+        <button class="btn btn-sm btn-quiet" data-action="nav" data-to="meds">All meds</button>
       </div>
       <div class="card card-flush">
-        <div class="rows">
-          ${map(doses, (d) => {
-            const label = doseLabel(d.status, d.time);
-            return `
-              <div class="dose-row">
-                <span class="med-dot" data-color="${esc(d.med.color)}" aria-hidden="true">💊</span>
-                <span class="dose-body">
-                  <span class="dose-name">${esc(d.med.name)} ${esc(d.med.dose)}</span>
-                  <span class="dose-meta">${prettyTime(d.time)} · ${label}</span>
-                </span>
-                <button class="tick" data-status="${d.status}"
-                        data-action="dose-cycle"
-                        data-med="${d.med.id}" data-time="${d.time}" data-day="${today}"
-                        aria-label="${esc(d.med.name)} at ${prettyTime(d.time)}: ${label}. Tap to change.">
-                  ${GLYPH[d.status]}
-                </button>
-              </div>`;
-          })}
-        </div>
+        <ul class="rows">${raw(rows)}</ul>
       </div>
-    </div>
+      <p class="hint">Tap a circle to cycle: taken → late → missed → not logged.</p>
+    </section>
   `;
 }
 
@@ -239,14 +267,12 @@ function todayCard(state) {
 
 function checkinPrompt() {
   return html`
-    <button class="card card-tap" data-action="checkin-open">
+    <button class="card card-tap checkin-cta" data-action="checkin-open">
       <span class="row">
-        <span class="med-dot" data-color="blue" aria-hidden="true">🌙</span>
+        <span class="med-dot" data-color="blue" aria-hidden="true">${raw(icon('moon', 20))}</span>
         <span class="row-body">
           <span class="row-t">How did you sleep?</span>
-          <span class="row-s">
-            Ten seconds. Sleep and stress are what the pattern finder needs.
-          </span>
+          <span class="row-s">Ten-second check-in. Sleep and stress are what the pattern finder compares against.</span>
         </span>
         <span class="chev">${raw(icon('chevron'))}</span>
       </span>
@@ -258,22 +284,20 @@ function checkinPrompt() {
 
 function insightCard(ins) {
   return html`
-    <div class="section">
+    <section class="section" aria-labelledby="insight-h">
       <div class="section-head">
-        <h2>Worth knowing</h2>
-        <button class="btn btn-sm btn-quiet" data-action="nav" data-to="track">
-          All patterns
-        </button>
+        <h2 id="insight-h">Worth knowing</h2>
+        <button class="btn btn-sm btn-quiet" data-action="open-patterns">All patterns</button>
       </div>
       <div class="insight" data-tone="${ins.tone}">
-        <span class="insight-ico" aria-hidden="true">${ins.icon}</span>
+        <span class="insight-ico" aria-hidden="true">${raw(icon(ins.icon, 20))}</span>
         <span class="insight-body">
           <span class="insight-t">${ins.title}</span>
           <span class="insight-d">${ins.detail}</span>
           <span class="insight-e">${ins.evidence}</span>
         </span>
       </div>
-    </div>
+    </section>
   `;
 }
 
@@ -283,14 +307,14 @@ function quickActions() {
   return html`
     <div class="quick-grid">
       <button class="quick" data-action="seizure-open">
-        <span class="quick-ico" aria-hidden="true">📝</span>
+        <span class="quick-ico" data-tone="violet" aria-hidden="true">${raw(icon('note', 20))}</span>
         <span class="quick-t">Log a seizure</span>
-        <span class="quick-s">Takes about ten seconds</span>
+        <span class="quick-s">Half-filled is fine</span>
       </button>
       <button class="quick" data-action="open-emergency">
-        <span class="quick-ico" aria-hidden="true">🆘</span>
-        <span class="quick-t">Safety card</span>
-        <span class="quick-s">Show someone what to do</span>
+        <span class="quick-ico" data-tone="rose" aria-hidden="true">${raw(icon('shield', 20))}</span>
+        <span class="quick-t">Emergency card</span>
+        <span class="quick-s">With a seizure timer</span>
       </button>
     </div>
   `;
@@ -301,14 +325,14 @@ function quickActions() {
    ============================================================ */
 
 export const actions = {
-  /** The two big buttons on the next-dose card. */
+  /** The buttons on the next-dose card. */
   async 'dose-quick'(node) {
     const { med, time, status } = node.dataset;
     await store.setDoseStatus(dayKey(), med, time, status);
     toast(
       status === 'taken' ? 'Marked taken' :
       status === 'late'  ? 'Marked taken late' : 'Marked missed',
-      status === 'missed' ? 'bad' : 'ok'
+      status === 'missed' ? 'default' : 'ok'
     );
   },
 };

@@ -183,15 +183,8 @@ strong, b { font-weight: var(--w-semi); }
    as the digits change. */
 .tnum { font-variant-numeric: tabular-nums; }
 
-/* ---------- Print ----------
-   Only ever used for the safety card: a printed copy taped inside a
-   locker door or handed to the front office is genuinely how this
-   gets used, so it has to come out clean rather than as a screenshot
-   of an app. Chrome and the nav disappear; the card fills the page. */
+.mt-3 { margin-top: var(--s-3); }
+.self-start { align-self: flex-start; }
+.text-bad { color: var(--bad-ink) !important; }
 
-@media print {
-  .no-print { display: none !important; }
-  body { background: #fff; color: #000; }
-  .app-shell { display: block; height: auto; }
-  .screen { overflow: visible; padding: 0; }
-}
+/* Printing lives in css/print.css, loaded with media="print". */

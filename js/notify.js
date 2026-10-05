@@ -121,28 +121,27 @@ export function schedule() {
   const nowMins = now.getHours() * 60 + now.getMinutes();
   let scheduled = 0;
 
-  for (const med of store.activeMeds(state)) {
-    for (const time of med.times) {
-      const at = minutesOf(time) - (reminderLead || 0);
-      if (at <= nowMins) continue;
+  // dosesOn() only returns what is scheduled today, so a stopped med
+  // or yesterday's old time can never fire a reminder.
+  for (const { med, time } of store.dosesOn(today, state)) {
+    const at = minutesOf(time) - (reminderLead || 0);
+    if (at <= nowMins) continue;
 
-      // Already dealt with? Don't nag.
-      if (store.doseStatus(today, med.id, time, state) !== 'pending') continue;
+    // Already dealt with? Don't nag.
+    if (store.doseStatus(today, med.id, time, state) !== 'pending') continue;
 
-      const delayMs = (at - nowMins) * 60000;
-      // setTimeout is only accurate up to ~24 days; a same-day delay is
-      // always well inside that, so no chunking needed here.
-      timers.push(setTimeout(() => {
-        const fresh = store.get();
-        if (!fresh.settings.remindersOn) return;
-        if (inQuietHours(fresh.settings, new Date())) return;
-        // Re-check: they may have taken it in the meantime.
-        if (store.doseStatus(dayKey(), med.id, time, fresh) !== 'pending') return;
-        fire(med, time);
-      }, delayMs));
+    const delayMs = (at - nowMins) * 60000;
+    // A same-day delay is always far inside setTimeout's ~24-day limit.
+    timers.push(setTimeout(() => {
+      const fresh = store.get();
+      if (!fresh.settings.remindersOn) return;
+      if (inQuietHours(fresh.settings, new Date())) return;
+      // Re-check: they may have taken it in the meantime.
+      if (store.doseStatus(dayKey(), med.id, time, fresh) !== 'pending') return;
+      fire(med, time);
+    }, delayMs));
 
-      scheduled++;
-    }
+    scheduled++;
   }
 
   return scheduled;

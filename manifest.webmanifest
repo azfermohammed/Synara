@@ -40,10 +40,10 @@
   ],
   "shortcuts": [
     {
-      "name": "Safety card",
-      "short_name": "Safety",
-      "description": "Open the emergency seizure card",
-      "url": "./#/safety",
+      "name": "Emergency card",
+      "short_name": "SOS",
+      "description": "Open the emergency seizure card with its timer",
+      "url": "./#/sos",
       "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }]
     },
     {

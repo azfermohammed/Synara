@@ -1,0 +1,140 @@
+/* ============================================================
+   print.css — the printed seizure action card
+   ------------------------------------------------------------
+   Loaded by index.html with media="print", so it costs nothing on
+   screen. js/views/safety.js fills #print-card and calls print().
+
+   A printed copy in the front office's binder or taped inside a
+   locker is how most schools actually handle this. It has to be one
+   clean page that works in black and white — so every warning is
+   carried by words and borders, never colour alone.
+   ============================================================ */
+
+@page {
+  size: letter;
+  margin: 14mm;
+}
+
+.app-shell, .backdrop, .sheet, .emergency, .welcome, .toast, .skip-link {
+  display: none !important;
+}
+
+html, body {
+  background: #fff !important;
+  color: #111 !important;
+  height: auto !important;
+  overflow: visible !important;
+}
+
+.print-card { display: block !important; }
+
+.pc {
+  font-family: var(--font);
+  font-size: 10.5pt;
+  line-height: 1.4;
+  color: #111;
+}
+
+.pc section, .pc-cols > section { break-inside: avoid; }
+
+.pc-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 16pt;
+  padding-bottom: 8pt;
+  margin-bottom: 10pt;
+  border-bottom: 3pt solid #111;
+}
+.pc-kicker {
+  margin: 0;
+  font-size: 8.5pt;
+  font-weight: 800;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+.pc-name {
+  margin: 2pt 0 0;
+  font-size: 24pt;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
+.pc-911 {
+  flex: none;
+  padding: 6pt 12pt;
+  border: 2.5pt solid #111;
+  border-radius: 6pt;
+  font-size: 8.5pt;
+  text-align: center;
+  line-height: 1.2;
+}
+.pc-911 strong { display: block; font-size: 18pt; font-weight: 800; }
+
+.pc-facts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 5pt 18pt;
+  margin: 0 0 4pt;
+}
+.pc-facts dt {
+  font-size: 7.5pt;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: #444;
+}
+.pc-facts dd { margin: 0; font-weight: 600; }
+
+.pc h2 {
+  margin: 10pt 0 4pt;
+  font-size: 10pt;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+.pc h3 { margin: 0 0 2pt; font-size: 9.5pt; font-weight: 800; }
+.pc p { margin: 0; }
+
+.pc ol { margin: 0; padding-left: 15pt; }
+.pc li { margin: 2pt 0; }
+.pc-not { list-style: none; padding-left: 0; }
+.pc-not li::before { content: '✕  '; font-weight: 800; }
+
+.pc-cols {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18pt;
+}
+
+.pc-ems {
+  margin-top: 10pt;
+  padding: 2pt 10pt 8pt;
+  border: 2.5pt solid #111;
+  border-radius: 6pt;
+}
+
+.pc-contacts { width: 100%; border-collapse: collapse; }
+.pc-contacts td {
+  padding: 3pt 0;
+  border-bottom: 0.75pt solid #bbb;
+  vertical-align: top;
+}
+.pc-contacts td:last-child { text-align: right; white-space: nowrap; font-weight: 700; }
+
+.pc-roles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150pt, 1fr));
+  gap: 12pt;
+  margin-top: 12pt;
+  padding-top: 8pt;
+  border-top: 0.75pt solid #bbb;
+}
+
+.pc-foot {
+  margin-top: 12pt;
+  padding-top: 6pt;
+  border-top: 0.75pt solid #bbb;
+  font-size: 7.5pt;
+  color: #444;
+}

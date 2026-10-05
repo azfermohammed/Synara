@@ -23,18 +23,22 @@
 
 import { dayKey, addDays, uid } from './util.js';
 
-/* Offsets in days back from today. Tuned so three of the four
-   seizures land within 48h of a missed or late evening dose, and
-   all four follow a short-sleep night — enough signal for the
-   engine to report, not so clean that it looks fabricated. */
-/* Three of the four seizures land within 48h of a missed or late
-   evening dose — deliberately not all four. The one at day 38 was
-   triggered by strobe lighting with a clean dose record around it,
-   so the engine reports 3/4 rather than a suspiciously tidy 100%.
-   Real correlations have exceptions; a demo without them is a lie. */
+/* Offsets in days back from today. Three of the four seizures land
+   within 48h of a missed or late evening dose — deliberately not all
+   four. The one at day 38 was triggered by strobe lighting with a
+   clean dose record around it, so the engine reports 3/4 rather than
+   a suspiciously tidy 100%. Real correlations have exceptions; a demo
+   without them is a lie. All four follow a short-sleep night. */
 const MISSED_EVENING = [4, 12, 25, 26, 41];
 const LATE_DOSES     = [2, 6, 9, 17, 22, 31];
 const HISTORY_DAYS   = 45;
+
+/* The evening dose moved from 9pm to 8pm this many days ago, and a
+   previous medication was stopped this many days ago. Both exist so
+   the demo exercises schedule history: neither change may rewrite the
+   days before it. */
+const EVENING_MOVED_BACK = 21;
+const TOPIRAMATE_STOPPED_BACK = 30;
 
 /** Nights with noticeably less sleep than baseline. */
 const SHORT_SLEEP = { 3: 5.0, 4: 6.0, 11: 5.5, 12: 6.0, 24: 4.5, 25: 5.5, 38: 6.0 };
@@ -62,34 +66,54 @@ export function seed(state) {
   };
 
   /* ---------- Meds ---------- */
+  const start = addDays(today, -HISTORY_DAYS);
+  const moved = addDays(today, -EVENING_MOVED_BACK);
+  const stopped = addDays(today, -TOPIRAMATE_STOPPED_BACK);
+
   const lev = {
     id: uid('med'),
     name: 'Levetiracetam',
     dose: '500 mg',
     form: 'tablet',
-    times: ['08:00', '20:00'],
-    notes: 'Take with food.',
+    notes: 'Take with food. Evening dose moved to 8pm so it is done before homework.',
     color: 'violet',
-    active: true,
-    added: addDays(today, -HISTORY_DAYS),
+    added: start,
+    ended: null,
+    schedule: [
+      { from: start, times: ['08:00', '21:00'] },
+      { from: moved, times: ['08:00', '20:00'] },
+    ],
   };
   const lam = {
     id: uid('med'),
     name: 'Lamotrigine',
     dose: '100 mg',
     form: 'tablet',
-    times: ['08:00'],
     notes: 'Never stop suddenly — taper only with Dr. Raghavan.',
     color: 'mint',
-    active: true,
-    added: addDays(today, -HISTORY_DAYS),
+    added: start,
+    ended: null,
+    schedule: [{ from: start, times: ['08:00'] }],
   };
-  state.meds = [lev, lam];
+  const top = {
+    id: uid('med'),
+    name: 'Topiramate',
+    dose: '25 mg',
+    form: 'tablet',
+    notes: 'Stopped with Dr. Raghavan — made it hard to concentrate in class.',
+    color: 'amber',
+    added: start,
+    ended: stopped,
+    schedule: [{ from: start, times: ['21:00'] }],
+  };
+  state.meds = [lev, lam, top];
 
   /* ---------- Dose history ----------
-     Built backwards from today so the calendar is full the moment
-     the app opens. Today's doses are deliberately left unlogged —
-     the home screen should have something for the student to do. */
+     Built backwards from today so the calendar is full the moment the
+     app opens. Each day logs whatever was scheduled THAT day, so the
+     evening dose is keyed 21:00 before the move and 20:00 after it.
+     Today is deliberately left unlogged — the home screen should have
+     something for the student to do. */
   state.doses = {};
 
   for (let back = HISTORY_DAYS; back >= 1; back--) {
@@ -98,19 +122,25 @@ export function seed(state) {
 
     const missedEvening = MISSED_EVENING.includes(back);
     const late = LATE_DOSES.includes(back);
+    const evening = day < moved ? '21:00' : '20:00';
 
     // Morning doses: near-perfect, occasionally late.
     entry[`${lev.id}|08:00`] = { status: late ? 'late' : 'taken', at: `${day}T08:12` };
     entry[`${lam.id}|08:00`] = { status: late ? 'late' : 'taken', at: `${day}T08:12` };
 
-    // Evening dose: the realistic failure point. Nobody misses the
-    // one they take at breakfast; they miss the one at 8pm.
+    // Evening dose: the realistic failure point. Nobody misses the one
+    // they take at breakfast; they miss the one at night.
     if (missedEvening) {
-      entry[`${lev.id}|20:00`] = { status: 'missed', at: `${day}T23:50` };
+      entry[`${lev.id}|${evening}`] = { status: 'missed', at: `${day}T23:50` };
     } else if (late) {
-      entry[`${lev.id}|20:00`] = { status: 'late', at: `${day}T22:40` };
+      entry[`${lev.id}|${evening}`] = { status: 'late', at: `${day}T22:40` };
     } else {
-      entry[`${lev.id}|20:00`] = { status: 'taken', at: `${day}T20:05` };
+      entry[`${lev.id}|${evening}`] = { status: 'taken', at: `${day}T${evening === '21:00' ? '21:04' : '20:05'}` };
+    }
+
+    // The stopped med, for the days it was still being taken.
+    if (day < stopped) {
+      entry[`${top.id}|21:00`] = { status: 'taken', at: `${day}T21:06` };
     }
 
     state.doses[day] = entry;

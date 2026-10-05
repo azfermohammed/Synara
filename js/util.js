@@ -212,6 +212,12 @@ export function telHref(phone) {
   return `tel:${String(phone).replace(/[^\d+]/g, '')}`;
 }
 
+/** True when a number has enough digits to actually dial. An emergency
+    button that rings nothing is worse than no button. */
+export function dialable(phone) {
+  return (String(phone || '').match(/\d/g) || []).length >= 3;
+}
+
 /** Initials for the avatar, max two letters. */
 export function initials(name) {
   return String(name || '')
