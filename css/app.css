@@ -1166,3 +1166,11 @@
 
 /* Print-only container; print.css shows it. */
 .print-card { display: none; }
+
+/* A full-screen layer that isn't open must never catch a tap — not
+   while hidden, and not during the quarter-second it takes to fade out. */
+.welcome:not([data-open="true"]),
+.emergency:not([data-open="true"]),
+.backdrop:not([data-open="true"]) {
+  pointer-events: none;
+}

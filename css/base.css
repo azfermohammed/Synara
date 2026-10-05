@@ -5,6 +5,12 @@
 
 *, *::before, *::after { box-sizing: border-box; }
 
+/* The `hidden` attribute must always win. The browser's own rule for it
+   is weaker than any site style, so an overlay styled `display: flex`
+   stayed on screen when "hidden" — invisible at opacity 0, but still on
+   top of the whole app, swallowing every tap. */
+[hidden] { display: none !important; }
+
 html, body, h1, h2, h3, h4, p, figure, blockquote, dl, dd,
 ul, ol, li, fieldset, legend { margin: 0; padding: 0; }
 
