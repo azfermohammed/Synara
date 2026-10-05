@@ -85,6 +85,57 @@
 .sos-btn:hover { background: var(--bad-700); }
 .sos-btn:active { transform: scale(.95); }
 
+/* Flux's app switcher, when Synara runs inside Flux (see main.js).
+   flux-hub.css reads these names with dark fallbacks; mapping them to
+   Synara's tokens keeps it in Synara's colours, light or dark. */
+.fxhub {
+  --text: var(--ink);
+  --muted2: var(--ink-3);
+  --accent: var(--brand);
+  --card: var(--bg-raised);
+  --card2: var(--bg-raised);
+  --border: var(--line);
+  --border2: var(--line-strong);
+}
+.appbar .fxhub-btn {
+  min-height: 44px;
+  padding: 0 14px;
+  border-radius: var(--r-full);
+}
+.fxhub .fxhub-btn:hover {
+  color: var(--brand-ink);
+  border-color: var(--brand);
+  background: var(--brand-soft);
+}
+.fxhub a:hover { text-decoration: none; }
+.fxhub .fxhub-item:hover { background: var(--bg-sunken); }
+.fxhub .fxhub-item.is-here {
+  background: var(--brand-soft);
+  border-color: color-mix(in srgb, var(--brand) 35%, transparent);
+}
+.fxhub .fxhub-item-mark {
+  color: var(--brand-ink);
+  background: var(--brand-soft);
+  border-color: color-mix(in srgb, var(--brand) 25%, transparent);
+}
+.fxhub .fxhub-all:hover { background: var(--bg-sunken); }
+.fxhub .fxhub-panel { box-shadow: var(--sh-xl); }
+
+/* On a phone the button sits beside SOS at the right, where a 280px menu
+   anchored to it would hang off one edge or the other. Anchor it to the
+   app bar instead and let it span the screen. !important because
+   flux-hub.js positions the menu with inline styles. */
+@media (max-width: 560px) {
+  .appbar { position: relative; }
+  .appbar .fxhub { position: static; }
+  .appbar .fxhub-panel {
+    left: var(--s-3) !important;
+    right: var(--s-3) !important;
+    top: calc(100% + 6px);
+    min-width: 0;
+  }
+}
+
 /* ---------- Screen ---------- */
 
 .screen {

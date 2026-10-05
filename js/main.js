@@ -55,6 +55,14 @@ const el = {
   tabbar: document.getElementById('tabbar'),
 };
 
+/* Synara also runs inside Flux (synara.html there), which marks <html>
+   with data-host="flux" and supplies its app switcher as a
+   [data-flux-hub] node. The switcher keeps its own listeners and
+   open/closed state, so it is moved into each freshly rendered app bar
+   rather than rebuilt. Standalone, neither exists and nothing changes. */
+const HOSTED = document.documentElement.dataset.host === 'flux';
+const hostSwitch = document.querySelector('[data-flux-hub]');
+
 function parseHash() {
   const id = (location.hash || '').replace(/^#\/?/, '').split(/[/?]/)[0];
   if (ALIASES[id]) return { route: ALIASES[id], sos: id === 'sos' };
@@ -154,6 +162,7 @@ function renderAppbar(state) {
       ${raw(icon('shield', 16))}<span>SOS</span>
     </button>
   `;
+  if (hostSwitch) el.appbar.insertBefore(hostSwitch, el.appbar.querySelector('.sos-btn'));
 }
 
 function renderScreen(state) {
@@ -169,7 +178,8 @@ function render() {
   // their scroll position or keyboard focus.
   const top = el.screen.scrollTop;
   const active = document.activeElement;
-  const key = active && el.shell.contains(active) ? focusKey(active) : null;
+  const inSwitch = hostSwitch && hostSwitch.contains(active);
+  const key = active && !inSwitch && el.shell.contains(active) ? focusKey(active) : null;
 
   document.title = `${TABS[route].label} · Synara`;
   applyTheme(state.settings.theme);
@@ -179,6 +189,7 @@ function render() {
 
   el.screen.scrollTop = top;
   if (key) refocus(key, el.shell);
+  else if (inSwitch) active.focus();
 }
 
 /* ============================================================
@@ -339,6 +350,8 @@ function startClock() {
 }
 
 function registerServiceWorker() {
+  // Inside Flux, Flux's own service worker already covers this page.
+  if (HOSTED) return;
   if (!('serviceWorker' in navigator) || location.protocol === 'file:') return;
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('sw.js').catch((err) => {

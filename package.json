@@ -6,7 +6,8 @@
   "type": "module",
   "scripts": {
     "dev": "python3 dev.py 4173",
-    "test": "node --test \"test/*.test.js\""
+    "test": "node --test \"test/*.test.js\"",
+    "flux": "node scripts/to-flux.mjs"
   },
   "engines": {
     "node": ">=22"

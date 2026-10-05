@@ -32,6 +32,23 @@ Upload the folder as-is to any static host. There is nothing to compile.
 caching headers the app relies on; on other hosts, make sure `.js`, `.css`,
 and `.html` are served with `Cache-Control: no-cache`.
 
+### Synara in Flux
+
+Synara is also one of the apps in [Flux](https://github.com/fluxplanner/Flux),
+as `synara.html` beside the Grapher and Pixel: it's on the Flux hub and in the
+Flux app switcher, but keeps its own name, violet look, and light/dark theme.
+This repo stays the source. To update Flux:
+
+```bash
+npm run flux -- "../dev/Flux Planner"     # copies js/, css/, icons/ to public/synara/
+cd "../dev/Flux Planner" && npm run build:web
+```
+
+Flux's build bundles the modules into one hashed script and stylesheet, so a
+returning visitor can never get a new `main.js` with an old `store.js`. Inside
+Flux, `<html data-host="flux">` tells `main.js` to skip its own service worker
+(Flux's covers the page) and to put Flux's switcher in the app bar.
+
 ---
 
 ## First run

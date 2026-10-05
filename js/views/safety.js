@@ -774,6 +774,16 @@ export const actions = {
   'print-card'(node, state) {
     const target = document.getElementById('print-card');
     if (!target) return;
+    // Saved to an iPhone or iPad home screen, the app cannot print at
+    // all: print() silently does nothing. Say so instead.
+    const ua = navigator.userAgent;
+    const apple = /iPad|iPhone|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+    const installed = window.navigator.standalone === true ||
+      window.matchMedia('(display-mode: standalone)').matches;
+    if (apple && installed) {
+      toast('To print, open this page in Safari. Home-screen apps can’t print on iPhone or iPad.', 'bad');
+      return;
+    }
     target.innerHTML = printMarkup(state);
     window.print();
   },
