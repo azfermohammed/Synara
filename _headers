@@ -1,0 +1,22 @@
+# Netlify / Cloudflare Pages headers.
+#
+# The app is a graph of ES modules. If a browser reuses a cached old
+# module next to a freshly downloaded new one, the app fails to start —
+# so every app file is revalidated (`no-cache` = "ask first", answered
+# with a cheap 304 when unchanged). See dev.py for the full story.
+
+/*.js
+  Cache-Control: no-cache
+/*.css
+  Cache-Control: no-cache
+/*.html
+  Cache-Control: no-cache
+/*.webmanifest
+  Cache-Control: no-cache
+/
+  Cache-Control: no-cache
+
+/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: no-referrer
+  Permissions-Policy: camera=(), microphone=(), geolocation=()
