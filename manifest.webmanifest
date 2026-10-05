@@ -1,0 +1,64 @@
+{
+  "name": "Synara — epilepsy care for students",
+  "short_name": "Synara",
+  "description": "Medication reminders, seizure tracking, and an emergency safety card in one app built for students with epilepsy.",
+  "id": "/",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f6f5fa",
+  "theme_color": "#7c4dff",
+  "categories": ["health", "medical", "lifestyle"],
+  "lang": "en",
+  "dir": "ltr",
+  "icons": [
+    {
+      "src": "icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Safety card",
+      "short_name": "Safety",
+      "description": "Open the emergency seizure card",
+      "url": "./#/safety",
+      "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Log a seizure",
+      "short_name": "Log",
+      "description": "Record a seizure that just happened",
+      "url": "./#/track",
+      "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Today's doses",
+      "short_name": "Meds",
+      "description": "Mark doses taken or missed",
+      "url": "./#/meds",
+      "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }]
+    }
+  ]
+}
