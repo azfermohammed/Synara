@@ -37,7 +37,8 @@ and `.html` are served with `Cache-Control: no-cache`.
 Synara is also one of the apps in [Flux](https://github.com/fluxplanner/Flux),
 as `synara.html` beside the Grapher and Pixel: it's on the Flux hub and in the
 Flux app switcher, but keeps its own name, violet look, and light/dark theme.
-This repo stays the source. To update Flux:
+This repo stays the source. To update Flux (from a Flux checkout that has
+Synara in it: `git pull` there first):
 
 ```bash
 npm run flux -- "../dev/Flux Planner"     # copies js/, css/, icons/ to public/synara/

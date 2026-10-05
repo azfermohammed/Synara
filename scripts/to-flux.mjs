@@ -20,8 +20,17 @@ if (!target) {
   process.exit(1);
 }
 const flux = path.resolve(target);
-if (!fs.existsSync(path.join(flux, 'hub.html')) || !fs.existsSync(path.join(flux, 'scripts', 'build-web-bundles.mjs'))) {
-  console.error(`${flux} does not look like a Flux checkout (no hub.html or build script).`);
+const build = path.join(flux, 'scripts', 'build-web-bundles.mjs');
+if (!fs.existsSync(build)) {
+  console.error(`${flux} does not look like a Flux checkout (no scripts/build-web-bundles.mjs).`);
+  process.exit(1);
+}
+// An older Flux checkout builds fine but never bundles Synara, so the copy
+// would sit there unused. Say how to catch it up instead.
+if (!fs.existsSync(path.join(flux, 'synara.html')) || !fs.readFileSync(build, 'utf8').includes('flux-synara')) {
+  console.error(`${flux} does not have Synara in it yet: it is older than the change that added it.`);
+  console.error('Bring it up to date first:  git -C "' + flux + '" pull');
+  console.error('(If that change has not been merged yet, merge it on GitHub first.)');
   process.exit(1);
 }
 
