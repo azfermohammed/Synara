@@ -22,7 +22,7 @@
    never sent anywhere.
    ============================================================ */
 
-const VERSION = 'synara-v2.2.0';
+const VERSION = 'synara-v2.3.0';
 const CACHE = `${VERSION}-shell`;
 
 /* Long enough for a slow school network to answer; short enough that
@@ -46,12 +46,17 @@ const PRECACHE = [
   'js/seed.js',
   'js/insights.js',
   'js/notify.js',
+  'js/fluxlink.js',
+  'js/sync.js',
+  'js/setup.js',
+  'js/intro.js',
   'js/views/home.js',
   'js/views/meds.js',
   'js/views/seizures.js',
   'js/views/safety.js',
   'js/views/profile.js',
   'icons/icon.svg',
+  'icons/icon-180.png',
   'icons/icon-192.png',
   'icons/icon-512.png',
   'icons/icon-maskable-512.png',

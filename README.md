@@ -71,8 +71,12 @@ The Flux side of all this is documented in Flux's `docs/SYNARA-PARTNERSHIP.md`.
 
 Synara asks once, before writing anything to storage:
 
-- **Set it up for me** — starts empty and drops you on Meds to add your first
-  medication.
+- **Set it up for me** — a short intro in the shape of Flux's onboarding
+  (`js/intro.js`): a few questions about your epilepsy (name, seizure types in
+  plain words, the year you were diagnosed, whether you take medication) that
+  fill in your real details, a fact about epilepsy with its source, then
+  **your sections**: what's left to fill in for the safety card to be useful.
+  That list (`js/setup.js`) stays on Home until it's done or you hide it.
 - **Look around with example data** — loads a synthetic record (45 days of
   doses, four seizures, five contacts, a stopped medication, a schedule
   change) so every screen is populated.

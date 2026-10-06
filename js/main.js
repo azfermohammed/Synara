@@ -12,15 +12,15 @@
    ============================================================ */
 
 import * as store from './store.js';
-import { seed } from './seed.js';
 import { html, raw, esc, dayKey } from './util.js';
 import {
   icon, toast, closeSheet, closeEmergency, isEmergencyOpen, isSheetOpen,
-  openWelcome, closeWelcome, focusKey, refocus, poweredByFlux,
+  closeWelcome, isWelcomeOpen, focusKey, refocus, poweredByFlux, brandMark,
 } from './ui.js';
 import * as notify from './notify.js';
 import * as fluxlink from './fluxlink.js';
 import * as sync from './sync.js';
+import * as intro from './intro.js';
 
 import * as home     from './views/home.js';
 import * as meds     from './views/meds.js';
@@ -101,12 +101,6 @@ export function applyTheme(theme) {
 /* ============================================================
    Render
    ============================================================ */
-
-function brandMark() {
-  return '<svg viewBox="0 0 32 32" fill="none" aria-hidden="true">' +
-    '<path d="M4 18h5l3-8 5 14 3.5-9H28" stroke="currentColor" stroke-width="2.6" ' +
-    'stroke-linecap="round" stroke-linejoin="round"/></svg>';
-}
 
 /** Doses scheduled today that still have no logged status. */
 function countPendingToday(state) {
@@ -199,47 +193,11 @@ function render() {
 /* ============================================================
    First run
    ------------------------------------------------------------
-   Asked once, before anything is written to storage. The example data
-   is useful for showing the app to someone, but it is somebody else's
-   medical history — a real student has to be able to decline it rather
-   than find it already filled in.
+   The intro (intro.js) asks before anything is written to storage.
+   The example data is useful for showing the app to someone, but it
+   is somebody else's medical history — a real student has to be able
+   to decline it rather than find it already filled in.
    ============================================================ */
-
-function showWelcome() {
-  openWelcome(html`
-    <div class="welcome-inner">
-      <div class="brand-mark welcome-mark">${raw(brandMark())}</div>
-      <h1 class="welcome-h1">Synara</h1>
-      <p class="welcome-sub">
-        Your medication, your seizures, and the card someone needs if you
-        have one at school — all in one place.
-      </p>
-
-      <ul class="welcome-points">
-        <li>${raw(icon('pill', 18))}<span>Dose reminders and a history you can show your doctor</span></li>
-        <li>${raw(icon('chart', 18))}<span>A seizure log that looks for patterns for you</span></li>
-        <li>${raw(icon('shield', 18))}<span>An emergency card anyone can follow, one tap away</span></li>
-      </ul>
-
-      <div class="welcome-actions">
-        <button class="btn btn-primary btn-lg btn-block" data-action="welcome-empty">
-          Set it up for me
-        </button>
-        <button class="btn btn-outline btn-lg btn-block" data-action="welcome-demo">
-          Look around with example data
-        </button>
-      </div>
-
-      <p class="welcome-note">
-        ${raw(icon('lock', 14))}
-        <span>Everything stays on this device — nothing is uploaded and there is
-        no account. Synara is a student project, not a medical device.</span>
-      </p>
-
-      ${raw(poweredByFlux('welcome-powered'))}
-    </div>
-  `);
-}
 
 /* ============================================================
    Action dispatch
@@ -261,17 +219,11 @@ const ACTIONS = {
     safety.showEmergency(store.get());
   },
 
-  async 'welcome-demo'() {
-    await store.reset({ seedFn: seed });
-    closeWelcome();
-    toast('Loaded example data — clear it any time in You', 'ok');
-  },
-
-  async 'welcome-empty'() {
-    await store.reset();
-    closeWelcome();
-    go('meds');
-    toast('Start by adding your medication', 'ok');
+  /* A section from the setup list (intro.js): leave the intro if it's
+     open, then do exactly what that section's own button does. */
+  'setup-go'(node) {
+    if (isWelcomeOpen()) closeWelcome();
+    run(node.dataset.target, node);
   },
 
   reload() {
@@ -281,7 +233,7 @@ const ACTIONS = {
 
 // Merge each view's actions. A view that needs a name already taken
 // should namespace it rather than silently win.
-for (const view of Object.values(VIEWS)) {
+for (const view of [...Object.values(VIEWS), intro]) {
   if (!view.actions) continue;
   for (const [name, fn] of Object.entries(view.actions)) {
     if (ACTIONS[name]) console.warn(`[synara] duplicate action "${name}"`);
@@ -376,7 +328,7 @@ async function boot() {
   store.subscribe(render);
   render();
 
-  if (firstRun) showWelcome();
+  if (firstRun) intro.show();
   else if (first.sos) onHashChange();
 
   window.addEventListener('hashchange', onHashChange);

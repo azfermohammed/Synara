@@ -397,6 +397,26 @@ export function closeWelcome() {
   overlayClosed('welcome');
 }
 
+/** The intro's next step, in place: the overlay stays open. Focus goes to
+    the step's heading so a screen reader starts reading from the top. */
+export function setWelcome(markup) {
+  el.welcome.innerHTML = markup;
+  el.welcome.scrollTop = 0;
+  const first = el.welcome.querySelector('[data-intro-focus]') || el.welcome.querySelector('button');
+  if (first) first.focus({ preventScroll: true });
+}
+
+export function isWelcomeOpen() {
+  return open.has('welcome');
+}
+
+/** Synara's pulse, as on its icon. */
+export function brandMark() {
+  return '<svg viewBox="0 0 32 32" fill="none" aria-hidden="true">' +
+    '<path d="M4 18h5l3-8 5 14 3.5-9H28" stroke="currentColor" stroke-width="2.6" ' +
+    'stroke-linecap="round" stroke-linejoin="round"/></svg>';
+}
+
 /* ============================================================
    Powered by Flux
    ------------------------------------------------------------

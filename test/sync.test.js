@@ -3,7 +3,9 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { encodeKey, decodeKey, formatKey, decide, encrypt, decrypt, hash } from '../js/sync.js';
+import {
+  encodeKey, decodeKey, formatKey, decide, encrypt, decrypt, hash, shareable, withDeviceSettings,
+} from '../js/sync.js';
 import { feedFor } from '../js/fluxlink.js';
 import { seed } from '../js/seed.js';
 import { emptyState, migrate } from '../js/store.js';
@@ -50,6 +52,35 @@ test('sync uploads, downloads, or asks — never silently overwrites both', () =
   assert.equal(decide('h2', row('t2'), meta), 'conflict', 'both changed');
   assert.equal(decide('h1', null, meta), 'gone', 'deleted from another device');
   assert.equal(decide('h1', null, {}), 'push', 'nothing synced yet');
+});
+
+/* ---------- Device settings ---------- */
+
+test('reminders and the planner link stay on the device that turned them on', () => {
+  const phone = exampleRecord();
+  phone.settings.remindersOn = true;
+  phone.settings.fluxLink = true;
+  phone.settings.reminderLead = 15;
+
+  const sent = JSON.parse(shareable(JSON.stringify(phone)));
+  assert.equal('remindersOn' in sent.settings, false);
+  assert.equal('fluxLink' in sent.settings, false);
+  assert.equal(sent.settings.reminderLead, 15, 'preferences still sync');
+
+  // A laptop that never allowed notifications gets the record, not the switch.
+  const laptop = exampleRecord();
+  const arrived = JSON.parse(withDeviceSettings(JSON.stringify(sent), laptop));
+  assert.equal(arrived.settings.remindersOn, false);
+  assert.equal(arrived.settings.fluxLink, false);
+  assert.equal(arrived.settings.reminderLead, 15);
+  assert.deepEqual(arrived.meds, phone.meds);
+});
+
+test('turning reminders on does not count as a change to sync', async () => {
+  const a = exampleRecord();
+  const b = structuredClone(a);
+  b.settings.remindersOn = !a.settings.remindersOn;
+  assert.equal(await hash(shareable(JSON.stringify(a))), await hash(shareable(JSON.stringify(b))));
 });
 
 /* ---------- Encryption ---------- */

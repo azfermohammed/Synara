@@ -1220,6 +1220,164 @@
 }
 .welcome-note svg { flex: none; margin-top: 2px; }
 
+/* ---------- Intro (intro.js) ----------
+   The welcome screen's later steps. Same overlay, a left-aligned card
+   for the questions. Steps fade in; with reduced motion --motion-slow
+   is ~0 and they simply appear. Nothing flashes or loops. */
+
+.intro-step { animation: intro-in var(--motion-slow) var(--ease) both; }
+@keyframes intro-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+
+.intro-dots { display: flex; justify-content: center; gap: 6px; width: 100%; margin-bottom: var(--s-2); }
+.intro-dot {
+  flex: 1;
+  max-width: 44px;
+  height: 4px;
+  border-radius: var(--r-full);
+  background: var(--line-strong);
+  transition: background var(--motion) var(--ease);
+}
+.intro-dot[data-state="done"] { background: color-mix(in srgb, var(--brand) 40%, transparent); }
+.intro-dot[data-state="on"] { background: var(--brand); }
+
+.intro {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+  width: 100%;
+  max-width: 480px;
+  margin: auto;
+  text-align: left;
+}
+.intro-ico {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  border-radius: var(--r-lg);
+  color: #fff;
+  background: linear-gradient(135deg, var(--v-400), var(--v-700));
+  box-shadow: var(--sh-brand);
+}
+.intro-h {
+  font-size: var(--t-2xl);
+  font-weight: var(--w-black);
+  letter-spacing: -0.03em;
+  line-height: var(--lh-tight);
+  color: var(--ink);
+  text-wrap: balance;
+}
+.intro-h:focus, .welcome-h1:focus { outline: none; }
+.intro-sub { margin-top: calc(var(--s-2) * -1); color: var(--ink-2); line-height: var(--lh-body); }
+
+.intro-fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+.intro-fieldset legend { margin-bottom: var(--s-2); }
+.intro-choices { display: flex; flex-direction: column; gap: var(--s-2); }
+.intro-choice {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  width: 100%;
+  padding: var(--s-3) var(--s-4);
+  text-align: left;
+  border-radius: var(--r-md);
+  border: 1px solid var(--line);
+  background: var(--bg-raised);
+  color: inherit;
+  transition: border-color var(--motion) var(--ease), background var(--motion) var(--ease);
+}
+.intro-choice:hover { border-color: var(--line-strong); }
+.intro-choice[aria-pressed="true"] { border-color: var(--brand); background: var(--brand-soft); }
+.intro-choice-body { flex: 1 1 auto; min-width: 0; }
+.intro-choice-t { display: block; font-weight: var(--w-semi); color: var(--ink); }
+.intro-choice-s { display: block; margin-top: 2px; font-size: var(--t-sm); color: var(--ink-3); line-height: var(--lh-snug); }
+.intro-tick {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--r-full);
+  border: 1.5px solid var(--line-strong);
+  color: transparent;
+}
+.intro-choice[aria-pressed="true"] .intro-tick { border-color: var(--brand); background: var(--brand); color: var(--ink-on-brand); }
+.intro-year { max-width: 9rem; font-variant-numeric: tabular-nums; }
+.intro-year[aria-invalid="true"], .intro-year:has(+ .hint:not(:empty)) { border-color: var(--bad); }
+
+.intro-fact {
+  margin: 0;
+  padding: var(--s-5);
+  border-radius: var(--r-lg);
+  border: 1px solid color-mix(in srgb, var(--brand) 35%, transparent);
+  background:
+    linear-gradient(155deg, color-mix(in srgb, var(--v-400) 16%, transparent), transparent 60%),
+    var(--bg-raised);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+}
+.intro-fact-t {
+  margin: 0;
+  font-size: var(--t-lg);
+  font-weight: var(--w-semi);
+  line-height: var(--lh-snug);
+  color: var(--ink);
+}
+.intro > .btn-quiet:not(.btn-block) { align-self: flex-start; }
+.intro-count { margin-bottom: calc(var(--s-2) * -1); }
+.intro-actions { display: flex; flex-direction: column; gap: var(--s-2); margin-top: var(--s-2); }
+
+/* ---------- Setup list: the intro's last step and Home's card ---------- */
+
+.setup-list { display: flex; flex-direction: column; gap: var(--s-2); }
+.setup-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  width: 100%;
+  padding: var(--s-3) var(--s-4);
+  text-align: left;
+  border-radius: var(--r-md);
+  border: 1px solid var(--line);
+  background: var(--bg-raised);
+  color: inherit;
+  transition: border-color var(--motion) var(--ease);
+}
+.setup-row:hover { border-color: var(--brand); }
+.setup-ico {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--r-md);
+  color: var(--brand);
+  background: var(--brand-soft);
+}
+.setup-row[data-done="true"] .setup-ico { color: var(--ok-ink); background: var(--ok-soft); }
+.setup-row[data-done="true"] .row-s { color: var(--ok-ink); }
+
+.setup-card { display: flex; flex-direction: column; gap: var(--s-3); }
+.setup-head { display: flex; align-items: flex-start; gap: var(--s-3); }
+.setup-h { margin-top: 2px; font-size: var(--t-lg); font-weight: var(--w-bold); color: var(--ink); }
+.setup-bar {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 100%;
+  height: 6px;
+  border: 0;
+  border-radius: var(--r-full);
+  background: var(--bg-sunken);
+  overflow: hidden;
+}
+.setup-bar::-webkit-progress-bar { background: var(--bg-sunken); border-radius: var(--r-full); }
+.setup-bar::-webkit-progress-value { background: var(--brand); border-radius: var(--r-full); }
+.setup-bar::-moz-progress-bar { background: var(--brand); border-radius: var(--r-full); }
+
 /* ---------- Flux: sync sheet ---------- */
 
 .mono { font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; letter-spacing: .04em; }

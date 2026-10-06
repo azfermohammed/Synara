@@ -79,6 +79,28 @@ export function formatKey(code) {
   return code.match(/.{1,4}/g).join('-');
 }
 
+/* Settings that belong to a device, not to the student. Reminders need
+   that device's own notification permission: synced "on" to a phone that
+   never granted it, the switch would say on while no reminder ever came.
+   The planner link writes to that device's own storage. So these are left
+   out of what syncs, and each device keeps its own when a copy arrives. */
+export const DEVICE_ONLY = ['remindersOn', 'fluxLink'];
+
+/** The record as it syncs: without this device's own settings. */
+export function shareable(plain) {
+  const rec = JSON.parse(plain);
+  if (rec.settings) for (const k of DEVICE_ONLY) delete rec.settings[k];
+  return JSON.stringify(rec);
+}
+
+/** A synced record, with this device's own settings kept as they are. */
+export function withDeviceSettings(plain, local) {
+  const rec = JSON.parse(plain);
+  rec.settings = { ...(rec.settings || {}) };
+  for (const k of DEVICE_ONLY) rec.settings[k] = local.settings[k];
+  return JSON.stringify(rec);
+}
+
 /** What to do, given this device's record hash, the synced row, and
     what both looked like at the last successful sync. */
 export function decide(localHash, remote, meta) {
@@ -198,8 +220,10 @@ function errorCode(e) {
    Sync
    ============================================================ */
 
+const localRecord = () => shareable(store.exportJSON());
+
 async function push(meta, raw) {
-  const plain = store.exportJSON();
+  const plain = localRecord();
   const sealed = await encrypt(plain, raw);
   const row = await need(vault()).put(sealed);
   writeMeta({ ...meta, hash: await hash(plain), remoteAt: row.updated_at, at: new Date().toISOString() });
@@ -210,8 +234,8 @@ async function pull(meta, raw, remote) {
   // Remember the server version first, so the re-render this import
   // triggers sees nothing new to upload.
   writeMeta({ ...meta, remoteAt: remote.updated_at });
-  await store.importJSON(plain);
-  writeMeta({ ...readMeta(), hash: await hash(store.exportJSON()), at: new Date().toISOString() });
+  await store.importJSON(withDeviceSettings(plain, store.get()));
+  writeMeta({ ...readMeta(), hash: await hash(localRecord()), at: new Date().toISOString() });
 }
 
 /** One round of the rule above. Never runs twice at once. */
@@ -226,7 +250,7 @@ export function syncNow() {
     try {
       const raw = decodeKey(meta.key);
       const remote = await v.get();
-      const what = decide(await hash(store.exportJSON()), remote, meta);
+      const what = decide(await hash(localRecord()), remote, meta);
       if (what === 'push') await push(meta, raw);
       else if (what === 'pull') await pull(meta, raw, remote);
       else if (what === 'gone') {

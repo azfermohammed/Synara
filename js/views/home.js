@@ -18,6 +18,7 @@ import {
 import * as store from '../store.js';
 import { summary, topInsight } from '../insights.js';
 import { icon, toast } from '../ui.js';
+import { setupCard } from '../intro.js';
 
 /* ============================================================
    Header
@@ -98,7 +99,8 @@ export function render(state) {
   return html`
     <div class="home-grid">
       <div class="home-main">
-        ${raw(hasMeds ? nextDoseCard(state) : noMedsCard())}
+        ${raw(hasMeds ? nextDoseCard(state) : noMedsCard(state))}
+        ${raw(setupCard(state))}
         ${raw(hasMeds ? todayCard(state) : '')}
       </div>
       <div class="home-side">
@@ -208,7 +210,9 @@ function nextDoseCard(state) {
   `;
 }
 
-function noMedsCard() {
+function noMedsCard(state) {
+  // Said in the intro they take none: nothing to nag about.
+  if (state.settings.noMeds) return '';
   return html`
     <section class="card next-dose" data-state="empty" aria-label="Get started">
       <span class="eyebrow">Get started</span>
