@@ -22,7 +22,7 @@
    never sent anywhere.
    ============================================================ */
 
-const VERSION = 'synara-v2.1.0';
+const VERSION = 'synara-v2.2.0';
 const CACHE = `${VERSION}-shell`;
 
 /* Long enough for a slow school network to answer; short enough that
@@ -55,6 +55,7 @@ const PRECACHE = [
   'icons/icon-192.png',
   'icons/icon-512.png',
   'icons/icon-maskable-512.png',
+  'icons/flux-logo.png',
 ];
 
 self.addEventListener('install', (event) => {

@@ -18,7 +18,7 @@ import * as store from '../store.js';
 import { seed } from '../seed.js';
 import { summary } from '../insights.js';
 import * as notify from '../notify.js';
-import { icon, toast, openSheet, closeSheet, confirmSheet, sheetValues } from '../ui.js';
+import { icon, toast, openSheet, closeSheet, confirmSheet, sheetValues, poweredByFlux } from '../ui.js';
 
 /* ============================================================
    Header
@@ -298,9 +298,14 @@ function aboutCard() {
         </p>
         <hr class="hr" />
         <p class="t-sm ink-3 prose">
-          Version 2.1 · a student project, not a medical device. Nothing here is
+          Version 2.2 · a student project, not a medical device. Nothing here is
           medical advice — always confirm your care plan with your neurologist.
         </p>
+        <hr class="hr" />
+        <div class="about-flux">
+          ${raw(poweredByFlux())}
+          <span class="t-sm ink-3">Built and hosted by Flux, the free planner for school.</span>
+        </div>
       </div>
     </section>
   `;

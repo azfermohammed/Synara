@@ -139,6 +139,11 @@
 /* ---------- Screen ---------- */
 
 .screen {
+  /* The containing block for anything absolutely positioned inside it.
+     Without this, the visually hidden file input at the foot of You was
+     placed against the page instead, stretched it past the app shell, and
+     a scroll wheel could carry the whole window off into blank space. */
+  position: relative;
   flex: 1 1 auto;
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -1214,6 +1219,32 @@
   text-align: left;
 }
 .welcome-note svg { flex: none; margin-top: 2px; }
+
+/* ---------- Powered by Flux ----------
+   A quiet credit, not an ad: small, muted, and kept off the emergency card. */
+
+.powered-by {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px 6px 10px;
+  border-radius: var(--r-full);
+  border: 1px solid var(--line);
+  background: var(--bg-raised);
+  font-size: var(--t-xs);
+  color: var(--ink-3);
+  text-decoration: none;
+  transition: border-color var(--motion) var(--ease), color var(--motion) var(--ease);
+}
+.powered-by:hover { text-decoration: none; color: var(--ink-2); border-color: var(--line-strong); }
+.powered-by-logo { display: block; width: 18px; height: 18px; flex: none; }
+.powered-by-name { font-weight: var(--w-bold); color: var(--ink); letter-spacing: -.01em; }
+
+.sidebar-powered { display: none; }
+@media (min-width: 900px) {
+  .sidebar-powered { display: inline-flex; align-self: center; margin-top: var(--s-3); }
+}
+.about-flux { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-3); }
 
 /* Print-only container; print.css shows it. */
 .print-card { display: none; }

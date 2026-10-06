@@ -1,6 +1,6 @@
 {
   "name": "synara",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "private": true,
   "description": "Medication reminders, seizure tracking, and an emergency safety card for students with epilepsy.",
   "type": "module",

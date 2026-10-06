@@ -396,6 +396,27 @@ export function closeWelcome() {
 }
 
 /* ============================================================
+   Powered by Flux
+   ------------------------------------------------------------
+   Synara is built and hosted by Flux, and says so: on the welcome
+   screen, at the foot of the desktop sidebar, and in You → About.
+   Never on the emergency card — that screen has one job.
+   Inside Flux, Synara's files live under public/synara/.
+   ============================================================ */
+
+const FLUX_URL = 'https://fluxplanner.github.io/Flux/landing.html';
+
+export function poweredByFlux(extraClass = '') {
+  const logo = document.documentElement.dataset.host === 'flux'
+    ? 'public/synara/icons/flux-logo.png'
+    : 'icons/flux-logo.png';
+  return `<a class="powered-by ${extraClass}" href="${FLUX_URL}" target="_blank" rel="noopener">` +
+    '<span class="powered-by-t">Powered by</span>' +
+    `<img class="powered-by-logo" src="${logo}" alt="" width="18" height="18" />` +
+    '<span class="powered-by-name">Flux</span></a>';
+}
+
+/* ============================================================
    Global dismiss handling
    ============================================================ */
 

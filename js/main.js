@@ -16,7 +16,7 @@ import { seed } from './seed.js';
 import { html, raw, esc, dayKey } from './util.js';
 import {
   icon, toast, closeSheet, closeEmergency, isEmergencyOpen,
-  openWelcome, closeWelcome, focusKey, refocus,
+  openWelcome, closeWelcome, focusKey, refocus, poweredByFlux,
 } from './ui.js';
 import * as notify from './notify.js';
 
@@ -144,6 +144,7 @@ function renderTabs(state) {
       ${raw(icon('shield', 18))}
       <span>Open emergency card</span>
     </button>
+    ${raw(poweredByFlux('sidebar-powered'))}
   `;
 }
 
@@ -231,6 +232,8 @@ function showWelcome() {
         <span>Everything stays on this device — nothing is uploaded and there is
         no account. Synara is a student project, not a medical device.</span>
       </p>
+
+      ${raw(poweredByFlux('welcome-powered'))}
     </div>
   `);
 }
