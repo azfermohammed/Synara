@@ -102,12 +102,40 @@ export function render(state) {
         ${raw(hasMeds ? todayCard(state) : '')}
       </div>
       <div class="home-side">
+        ${raw(purpleDayCard())}
         ${raw(statsStrip(stats))}
         ${raw(checkedIn ? '' : checkinPrompt())}
         ${raw(insight ? insightCard(insight) : '')}
         ${raw(quickActions())}
       </div>
     </div>
+  `;
+}
+
+/* ---------- Purple Day ----------
+   March 26 is Purple Day, the world's day for epilepsy awareness. The
+   one day a year it is easiest to ask friends and teachers to learn
+   what to do — so on it, Home suggests showing them the safety card.
+   Still, like everything here: no animation, nothing that flashes. */
+
+function purpleDayCard() {
+  const now = new Date();
+  if (now.getMonth() !== 2 || now.getDate() !== 26) return '';
+  return html`
+    <section class="card purple-day" aria-label="Purple Day">
+      <span class="purple-day-ico">${raw(icon('ribbon', 22))}</span>
+      <div class="grow">
+        <span class="eyebrow">Today is Purple Day</span>
+        <p class="purple-day-t">The world's day for epilepsy awareness</p>
+        <p class="t-sm ink-2">
+          A good day to show friends and teachers your safety card, so they
+          know what to do if you have a seizure.
+        </p>
+        <button class="btn btn-primary mt-3" data-action="nav" data-to="safety">
+          ${raw(icon('shield', 16))} Open my safety card
+        </button>
+      </div>
+    </section>
   `;
 }
 

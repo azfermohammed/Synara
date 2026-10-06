@@ -1220,6 +1220,52 @@
 }
 .welcome-note svg { flex: none; margin-top: 2px; }
 
+/* ---------- Flux: sync sheet ---------- */
+
+.mono { font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; letter-spacing: .04em; }
+.sheet-list { display: flex; flex-direction: column; gap: var(--s-3); margin-top: var(--s-3); }
+.sheet-list li { display: flex; gap: var(--s-3); align-items: flex-start; font-size: var(--t-sm); color: var(--ink-2); }
+.sheet-list svg { flex: none; margin-top: 3px; color: var(--brand); }
+.sync-key {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  margin-top: var(--s-3);
+  padding: var(--s-4);
+  border-radius: var(--r-md);
+  background: var(--bg-sunken);
+  border: 1px solid var(--line);
+}
+.sync-key code { font-size: var(--t-md); font-weight: var(--w-bold); color: var(--ink); word-break: break-all; }
+
+/* ---------- Purple Day (March 26) ---------- */
+
+.purple-day {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-4);
+  border-color: color-mix(in srgb, var(--brand) 40%, transparent);
+  background:
+    linear-gradient(155deg, color-mix(in srgb, var(--v-400) 18%, transparent), transparent 60%),
+    var(--bg-raised);
+}
+.purple-day-ico {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--r-md);
+  color: #fff;
+  background: linear-gradient(135deg, var(--v-400), var(--v-700));
+}
+.purple-day-t {
+  margin: 2px 0 4px;
+  font-size: var(--t-md);
+  font-weight: var(--w-bold);
+  color: var(--ink);
+}
+
 /* ---------- Powered by Flux ----------
    A quiet credit, not an ad: small, muted, and kept off the emergency card. */
 

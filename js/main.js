@@ -15,10 +15,12 @@ import * as store from './store.js';
 import { seed } from './seed.js';
 import { html, raw, esc, dayKey } from './util.js';
 import {
-  icon, toast, closeSheet, closeEmergency, isEmergencyOpen,
+  icon, toast, closeSheet, closeEmergency, isEmergencyOpen, isSheetOpen,
   openWelcome, closeWelcome, focusKey, refocus, poweredByFlux,
 } from './ui.js';
 import * as notify from './notify.js';
+import * as fluxlink from './fluxlink.js';
+import * as sync from './sync.js';
 
 import * as home     from './views/home.js';
 import * as meds     from './views/meds.js';
@@ -184,6 +186,7 @@ function render() {
 
   document.title = `${TABS[route].label} · Synara`;
   applyTheme(state.settings.theme);
+  fluxlink.publish(state);
   renderTabs(state);
   renderAppbar(state);
   renderScreen(state);
@@ -383,6 +386,14 @@ async function boot() {
   notify.start();
   registerServiceWorker();
   startClock();
+
+  // Sync (inside Flux only, once turned on). Its status shows on You; a
+  // conflict is asked about the moment it is found.
+  sync.onStatus((s) => {
+    if (route === 'you') render();
+    if (s.phase === 'conflict' && !isSheetOpen() && !isEmergencyOpen()) profile.showConflict();
+  });
+  sync.start();
 }
 
 boot().catch((err) => {

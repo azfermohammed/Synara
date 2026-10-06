@@ -22,7 +22,7 @@ served over http — ES modules and the service worker both need a real origin,
 so opening `index.html` as a file won't work.
 
 ```bash
-npm test                # 28 tests, Node's built-in runner, no installs
+npm test                # 34 tests, Node's built-in runner, no installs
 ```
 
 ### Deploy
@@ -49,6 +49,21 @@ Flux's build bundles the modules into one hashed script and stylesheet, so a
 returning visitor can never get a new `main.js` with an old `store.js`. Inside
 Flux, `<html data-host="flux">` tells `main.js` to skip its own service worker
 (Flux's covers the page) and to put Flux's switcher in the app bar.
+
+Only inside Flux, and only when the student turns them on (You → Flux):
+
+- **Show in my Flux Planner** (`js/fluxlink.js`) — dose times on the Flux
+  calendar and a safety-card button in School info, on this device. Synara
+  shares medication names, doses and times; nothing else.
+- **Sync across your devices** (`js/sync.js`) — through the student's Flux
+  account, **end-to-end encrypted**: the record is encrypted on the device
+  before it leaves, with a key that only travels as the student's 26-character
+  sync key. Flux stores ciphertext it cannot read.
+
+Everywhere, Synara credits Flux with a small "Powered by Flux" badge (welcome
+screen, sidebar, You → About — never on the emergency card), and on **Purple
+Day**, March 26, Home suggests showing friends and teachers the safety card.
+The Flux side of all this is documented in Flux's `docs/SYNARA-PARTNERSHIP.md`.
 
 ---
 
@@ -303,9 +318,12 @@ real local notifications and a lock-screen shortcut to the safety card.
 **Data lives only on this device.** Clearing browser data deletes it, and it
 won't move to a new phone on its own — use **You → Download a backup**.
 
-**Cloud sync is deliberately not built.** Once health data syncs to a server or
-a parent's phone, HIPAA, COPPA, and school-district rules all apply. That
-conversation comes before the code.
+**Cloud sync is end-to-end encrypted, and only inside Flux.** Health data on a
+server brings HIPAA, COPPA and school-district questions, so sync is built so
+the server never holds anything readable: Flux stores ciphertext and the key
+stays on the student's devices. Lose every device and the sync key, and the
+synced copy can't be opened — by design. Syncing to a parent's phone is still
+deliberately not built; that conversation comes before the code.
 
 **This is a student project, not a medical device.** The first-aid content
 follows standard public seizure first aid; any real student's card should be

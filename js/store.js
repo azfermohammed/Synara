@@ -171,6 +171,7 @@ export function emptyState() {
       reminderLead: 0,        // minutes before the scheduled time
       quietHours: null,       // {from:"22:00", to:"07:00"} or null
       seeded: false,
+      fluxLink: false,        // inside Flux: show dose times in the Flux Planner (fluxlink.js)
     },
   };
 }
@@ -382,6 +383,7 @@ export function migrate(stored) {
     reminderLead: Math.round(num(s.reminderLead, 0, 120, 0)),
     quietHours: q && isTime(q.from) && isTime(q.to) ? { from: q.from, to: q.to } : null,
     seeded: s.seeded === true,
+    fluxLink: s.fluxLink === true,
   };
 
   return {

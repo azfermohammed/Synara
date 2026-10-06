@@ -19,6 +19,8 @@ import { seed } from '../seed.js';
 import { summary } from '../insights.js';
 import * as notify from '../notify.js';
 import { icon, toast, openSheet, closeSheet, confirmSheet, sheetValues, poweredByFlux } from '../ui.js';
+import * as fluxlink from '../fluxlink.js';
+import * as sync from '../sync.js';
 
 /* ============================================================
    Header
@@ -57,6 +59,7 @@ export function render(state) {
         ${raw(careCard(state))}
       </div>
       <div class="split-side">
+        ${raw(fluxCard(state))}
         ${raw(remindersCard(state))}
         ${raw(appearanceCard(state))}
         ${raw(dataCard(state))}
@@ -126,6 +129,166 @@ function careCard(state) {
 }
 
 /* ---------- Reminders ---------- */
+
+/* ============================================================
+   Flux — only inside Flux (synara.html)
+   ------------------------------------------------------------
+   Two separate choices, both off until the student turns them on:
+   showing dose times in their Flux Planner (fluxlink.js, this device
+   only), and syncing across devices through their Flux account
+   (sync.js, end-to-end encrypted).
+   ============================================================ */
+
+function ago(iso) {
+  const t = Date.parse(iso);
+  if (!t) return '';
+  const min = Math.round((Date.now() - t) / 60000);
+  if (min < 1) return 'just now';
+  if (min < 60) return `${min} min ago`;
+  const h = Math.round(min / 60);
+  if (h < 24) return `${h} h ago`;
+  return new Date(t).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
+const SYNC_ERRORS = {
+  'signed-out': 'Sign in to Flux again to keep syncing.',
+  offline: 'Offline. It will sync when you’re back online.',
+  'not-ready': 'Sync isn’t switched on for Flux yet.',
+  'wrong-key': 'This device’s sync key doesn’t open the synced copy.',
+  gone: 'Turned off: the synced copy was deleted on another device.',
+};
+
+function syncNote() {
+  const st = sync.getStatus();
+  if (!sync.enabled()) {
+    if (st.error === 'gone') return SYNC_ERRORS.gone;
+    return st.account
+      ? 'Off. Encrypted on this device before it leaves, so Flux can’t read it.'
+      : 'Sign in to Flux to keep Synara the same on your phone and computer.';
+  }
+  if (st.phase === 'syncing') return 'Syncing…';
+  if (st.phase === 'conflict') return 'Changed on two devices. Choose which to keep.';
+  if (st.phase === 'error') return SYNC_ERRORS[st.error] || 'Couldn’t sync. It will try again.';
+  const at = sync.lastSynced();
+  return at ? `On · synced ${ago(at)}` : 'On';
+}
+
+function fluxCard(state) {
+  if (!fluxlink.available()) return '';
+  return html`
+    <section class="section" aria-labelledby="flux-h">
+      <h2 id="flux-h">Flux</h2>
+      <div class="card card-flush">
+        <div class="list-row list-row-static">
+          <span class="med-dot" data-color="violet" aria-hidden="true">${raw(icon('calendar', 20))}</span>
+          <span class="row-body">
+            <span class="row-t" id="fluxlink-label">Show in my Flux Planner</span>
+            <span class="row-s">Dose times on your Flux calendar and a safety-card button in
+              School info, on this device. Seizures, contacts and notes stay in Synara.</span>
+          </span>
+          <button class="switch" data-action="flux-link-toggle" role="switch"
+                  aria-checked="${state.settings.fluxLink}" aria-labelledby="fluxlink-label"></button>
+        </div>
+        <button class="list-row" data-action="sync-open">
+          <span class="med-dot" data-color="blue" aria-hidden="true">${raw(icon('sync', 20))}</span>
+          <span class="row-body">
+            <span class="row-t">Sync across your devices</span>
+            <span class="row-s">${syncNote()}</span>
+          </span>
+          <span class="chev">${raw(icon('chevron'))}</span>
+        </button>
+      </div>
+    </section>
+  `;
+}
+
+const PRIVACY = html`
+  <ul class="sheet-list">
+    <li>${raw(icon('lock', 16))}<span>Synara encrypts everything on this device before it leaves. Flux stores
+      a locked copy it can’t open — not your medication, seizures or contacts.</span></li>
+    <li>${raw(icon('info', 16))}<span>The key stays on your devices. You’ll get a <strong>sync key</strong> to
+      enter on your other devices. If you lose every device and the key, the synced copy can’t be
+      opened — but each device keeps its own.</span></li>
+  </ul>
+`;
+
+async function openSyncSheet() {
+  const who = await sync.refreshAccount();
+
+  if (!sync.enabled() && !who) {
+    openSheet({
+      title: 'Sync across your devices',
+      body: html`
+        <p class="sheet-message">Sign in to your Flux account, then come back here to keep Synara the
+          same on your phone and computer.</p>
+        ${raw(PRIVACY)}
+      `,
+      footer: `
+        <button class="btn btn-quiet" data-action="close-sheet">Not now</button>
+        <a class="btn btn-primary" href="index.html">Sign in to Flux</a>
+      `,
+    });
+    return;
+  }
+
+  if (!sync.enabled()) {
+    openSheet({
+      title: 'Sync across your devices',
+      body: html`
+        <p class="sheet-message">Signed in to Flux as <strong>${who.email || 'your account'}</strong>.</p>
+        ${raw(PRIVACY)}
+        <div class="stack stack-3 mt-3">
+          <button class="btn btn-primary btn-block" data-action="sync-start-new">
+            Start syncing from this device
+          </button>
+          <form class="stack stack-2" data-action="sync-join-check">
+            <label class="label" for="sync-key">Already syncing on another device? Enter its sync key.</label>
+            <input class="input mono" id="sync-key" name="key" autocomplete="off" autocapitalize="characters"
+                   spellcheck="false" placeholder="XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XX" />
+            <button class="btn btn-outline btn-block" type="submit">Connect this device</button>
+          </form>
+        </div>
+      `,
+    });
+    return;
+  }
+
+  const st = sync.getStatus();
+  openSheet({
+    title: 'Sync is on',
+    body: html`
+      <p class="sheet-message">${syncNote()}${raw(st.account ? ` · ${esc(st.account.email)}` : '')}</p>
+      <div class="sync-key">
+        <span class="label">Your sync key</span>
+        <code class="mono">${sync.keyText()}</code>
+        <span class="t-sm ink-3">Enter it on your other devices in You → Flux → Sync. Keep it private:
+          anyone with it and your Flux sign-in could read your synced copy.</span>
+      </div>
+      <div class="stack stack-2 mt-3">
+        <button class="btn btn-outline btn-block" data-action="sync-copy-key">Copy sync key</button>
+        <button class="btn btn-outline btn-block" data-action="sync-now">Sync now</button>
+        <button class="btn btn-quiet btn-block" data-action="sync-stop">Turn off on this device</button>
+        <button class="btn btn-quiet btn-block text-bad" data-action="sync-stop-delete">Turn off and delete the synced copy</button>
+      </div>
+    `,
+  });
+}
+
+/** Both copies changed since they last met: the student chooses. Exported
+    so main.js can ask the moment a sync finds it. */
+export function showConflict() {
+  openSheet({
+    title: 'Which copy should Synara keep?',
+    body: html`
+      <p class="sheet-message">Synara changed on this device and on another one since they last
+        synced. Pick the copy to keep; the other will be replaced.</p>
+    `,
+    footer: `
+      <button class="btn btn-outline" data-action="sync-resolve" data-choice="cloud">Use the other device’s</button>
+      <button class="btn btn-primary" data-action="sync-resolve" data-choice="device">Keep this device’s</button>
+    `,
+  });
+}
 
 const LEADS = [[0, 'On time'], [10, '10 min early'], [15, '15 min early'], [30, '30 min early']];
 
@@ -432,12 +595,16 @@ export const actions = {
   },
 
   'data-demo'() {
+    const syncing = sync.enabled();
     confirmSheet({
       title: 'Load example data?',
       message: 'Everything on this device will be replaced with a made-up student\'s record. ' +
-               'Download a backup first if any of what\'s here is real.',
+               'Download a backup first if any of what\'s here is real.' +
+               (syncing ? ' Sync turns off on this device first, so the example never reaches your other devices.' : ''),
       confirmLabel: 'Load example data',
       async onConfirm() {
+        // Otherwise the example would sync over the real record everywhere.
+        if (syncing) await sync.stop();
         await store.reset({ seedFn: seed });
         toast('Example data loaded', 'ok');
       },
@@ -451,6 +618,9 @@ export const actions = {
                'removed from this device. This can\'t be undone.',
       confirmLabel: 'Delete everything',
       async onConfirm() {
+        // Stop syncing here first, or the empty record would sync over every
+        // other device. The synced copy itself is left alone.
+        await sync.stop();
         await store.wipe();
         try { sessionStorage.removeItem('synara.timer'); } catch { /* blocked */ }
         // Back to the first-run choice, exactly as if newly installed.
@@ -459,4 +629,155 @@ export const actions = {
       },
     });
   },
+
+  /* ---- Flux ---- */
+
+  async 'flux-link-toggle'(node, state) {
+    const on = !state.settings.fluxLink;
+    await store.updateSettings({ fluxLink: on });
+    toast(on ? 'Your dose times now show in your Flux Planner' : 'Removed from your Flux Planner', 'ok');
+  },
+
+  'sync-open'() {
+    return openSyncSheet();
+  },
+
+  async 'sync-start-new'() {
+    try {
+      await sync.startNew();
+      await closeSheet();
+      toast('Sync is on', 'ok');
+      openSyncSheet(); // straight to the sync key, which the next device needs
+    } catch (e) {
+      if (e.code === 'has-copy') offerFreshStart();
+      else toast(syncError(e), 'bad');
+    }
+  },
+
+  async 'sync-join-check'() {
+    const { key } = sheetValues();
+    let info;
+    try {
+      info = await sync.inspect(key);
+    } catch (e) {
+      toast(syncError(e), 'bad');
+      return;
+    }
+    confirmSheet({
+      title: 'Use your synced copy here?',
+      message: `Your synced copy, updated ${ago(info.updatedAt)}, has ${plural(info.meds, 'medication')} and ` +
+               `${plural(info.seizures, 'logged seizure')}${info.name ? ` for ${info.name}` : ''}. ` +
+               'It will replace what is on this device now.',
+      confirmLabel: 'Use synced copy',
+      danger: false,
+      async onConfirm() {
+        try {
+          await sync.join(info.key);
+          toast('This device is synced', 'ok');
+        } catch (e) {
+          toast(syncError(e), 'bad');
+        }
+      },
+    });
+  },
+
+  async 'sync-copy-key'() {
+    try {
+      await navigator.clipboard.writeText(sync.keyText());
+      toast('Sync key copied', 'ok');
+    } catch {
+      toast('Couldn’t copy. Select the key and copy it instead.', 'bad');
+    }
+  },
+
+  async 'sync-now'() {
+    await closeSheet();
+    const result = await sync.syncNow();
+    if (result === 'error') toast(syncError(sync.getStatus()), 'bad');
+    else if (result !== 'conflict') toast('Synced', 'ok');
+  },
+
+  'sync-stop'() {
+    confirmSheet({
+      title: 'Turn off sync on this device?',
+      message: 'This device keeps everything it has. Your synced copy and your other devices are not changed.',
+      confirmLabel: 'Turn off',
+      danger: false,
+      async onConfirm() {
+        await sync.stop();
+        toast('Sync is off on this device', 'ok');
+      },
+    });
+  },
+
+  'sync-stop-delete'() {
+    confirmSheet({
+      title: 'Delete the synced copy?',
+      message: 'The encrypted copy in your Flux account is deleted and sync stops on every device. ' +
+               'Each device keeps its own record.',
+      confirmLabel: 'Delete synced copy',
+      async onConfirm() {
+        try {
+          await sync.stop({ deleteCopy: true });
+          toast('Synced copy deleted', 'ok');
+        } catch (e) {
+          toast(syncError(e), 'bad');
+        }
+      },
+    });
+  },
+
+  async 'sync-resolve'(node) {
+    await closeSheet();
+    try {
+      await sync.resolve(node.dataset.choice);
+      toast('Synced', 'ok');
+    } catch (e) {
+      toast(syncError(e), 'bad');
+    }
+  },
+
+  'sync-fresh'() {
+    confirmSheet({
+      title: 'Delete the old synced copy?',
+      message: 'Only do this if you no longer have the device or the sync key it was made with. ' +
+               'The old copy is deleted and this device becomes the new one to sync from.',
+      confirmLabel: 'Delete and start fresh',
+      async onConfirm() {
+        try {
+          await sync.stop({ deleteCopy: true });
+          await sync.startNew();
+          toast('Sync is on', 'ok');
+          openSyncSheet();
+        } catch (e) {
+          toast(syncError(e), 'bad');
+        }
+      },
+    });
+  },
 };
+
+function syncError(e) {
+  const code = (e && (e.code || e.error || e.message)) || '';
+  if (code === 'bad-key') return 'That isn’t a sync key. It’s 26 letters and numbers.';
+  if (code === 'no-copy') return 'There’s no synced copy in this Flux account yet. Turn sync on from your other device first.';
+  if (code === 'wrong-key') return 'That key doesn’t open your synced copy. Check it on your other device.';
+  return SYNC_ERRORS[code] || 'Couldn’t sync. Please try again.';
+}
+
+/** This Flux account already has a synced copy, made on another device. */
+function offerFreshStart() {
+  openSheet({
+    title: 'You already have a synced copy',
+    body: html`
+      <p class="sheet-message">Your Flux account already has a synced copy of Synara. To use it here,
+        enter the sync key from the device where you turned sync on (You → Flux → Sync).</p>
+      <p class="sheet-message">Lost that device and its key? You can delete the old copy and start
+        again from this one.</p>
+    `,
+    footer: `
+      <button class="btn btn-quiet" data-action="sync-open">Enter a sync key</button>
+      <button class="btn btn-danger" data-action="sync-fresh">Start fresh</button>
+    `,
+  });
+}
